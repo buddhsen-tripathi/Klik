@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { PartState } from '../../explode'
 
-export const ACTIVE_COLOR = new THREE.Color('#ff9f1c')
+export const ACTIVE_COLOR = new THREE.Color('#d87943')
 export const BLACK = new THREE.Color('#000000')
 export const deg = (d: number) => (d * Math.PI) / 180
 export const ORIENTS = [0, -Math.PI / 2, Math.PI / 2, Math.PI]

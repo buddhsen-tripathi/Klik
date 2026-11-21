@@ -1,4 +1,4 @@
-# Assemble on the Go
+# KLIK
 
 **Point your phone at an object and get a 3D model of it, plus step-by-step instructions to take it apart or put it back together, with a voice coach that watches through the camera while you work.**
 

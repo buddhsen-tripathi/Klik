@@ -1,7 +1,7 @@
 /* Voice helper: the live panel with captions. */
 
 .agent-panel { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 40; width: min(380px, calc(100vw - 32px));
-  display: grid; gap: 10px; padding: 12px; border-radius: 18px; background: #17191d; color: #f1f2f4; box-shadow: 0 10px 30px rgb(0 0 0 / 0.3); }
+  display: grid; gap: 10px; padding: 12px; border-radius: 18px; background: oklch(0.2101 0.0318 264.6645); border: 1px solid rgb(255 255 255 / 0.08); color: #f1f2f4; box-shadow: 0 10px 30px rgb(0 0 0 / 0.3); }
 .agent-top { display: flex; align-items: center; gap: 12px; }
 .agent-top .btn { color: #f1f2f4; border-color: rgb(255 255 255 / 0.2); }
 .agent-status { flex: 1; display: grid; gap: 2px; min-width: 0; }
@@ -9,9 +9,9 @@
 
 .agent-orb { --level: 0; position: relative; width: 44px; height: 44px; flex: none; border: 0; padding: 0; border-radius: 50%; background: transparent; }
 .agent-orb span, .agent-orb::before { position: absolute; inset: 0; border-radius: 50%; content: ''; }
-.agent-orb span { background: radial-gradient(circle at 35% 30%, #ffd08a, #ff9f1c 55%, #e8590c);
+.agent-orb span { background: radial-gradient(circle at 35% 30%, #ffd08a, #d87943 55%, #e8590c);
   transform: scale(calc(0.82 + var(--level) * 0.35)); transition: transform 60ms linear; }
-.agent-orb::before { background: #ff9f1c; opacity: calc(0.15 + var(--level) * 0.5); transform: scale(calc(1 + var(--level) * 0.7)); filter: blur(6px); }
+.agent-orb::before { background: #d87943; opacity: calc(0.15 + var(--level) * 0.5); transform: scale(calc(1 + var(--level) * 0.7)); filter: blur(6px); }
 .agent-panel.thinking .agent-orb span { animation: agent-think 1.1s ease-in-out infinite; }
 .agent-panel.connecting .agent-orb span { opacity: 0.5; animation: agent-think 1.4s ease-in-out infinite; }
 .agent-panel.error .agent-orb span { background: #6b7280; }
@@ -20,7 +20,7 @@
 .agent-captions { max-height: 30svh; overflow-y: auto; display: grid; gap: 6px; }
 .agent-captions p { margin: 0; padding: 7px 10px; border-radius: 12px; line-height: 1.4; font-size: 0.92rem; max-width: 88%; }
 .agent-captions p.you { justify-self: end; background: rgb(255 255 255 / 0.12); color: #d6d9de; }
-.agent-captions p.agent { justify-self: start; background: rgb(255 159 28 / 0.16); }
+.agent-captions p.agent { justify-self: start; background: color-mix(in oklch, var(--primary) 22%, transparent); }
 .agent-error { margin: 0; font-size: 0.85rem; color: #ffb4a2; }
 .agent-error .link-btn { color: inherit; text-decoration: underline; padding: 0; }
 .agent-type input { width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 10px; border: 1px solid rgb(255 255 255 / 0.15);

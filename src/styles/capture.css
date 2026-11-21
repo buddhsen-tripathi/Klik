@@ -1,29 +1,113 @@
-/* ---------- capture screen ---------- */
+/* ---------- home / upload ---------- */
 
 .capture {
   width: 100%;
   max-width: 560px;
   margin: 0 auto;
-  padding: 24px 16px calc(env(safe-area-inset-bottom) + 32px);
+  padding: 28px 16px calc(env(safe-area-inset-bottom) + 32px);
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
-.hero h1 {
-  font-size: clamp(1.8rem, 7vw, 2.4rem);
-  letter-spacing: -0.02em;
+/* Soft brand glow behind the hero. */
+.capture::before {
+  content: '';
+  position: fixed;
+  inset: -20% -30% auto;
+  height: 60svh;
+  z-index: -1;
+  background: radial-gradient(ellipse at 30% 30%, color-mix(in oklch, var(--primary) 16%, transparent), transparent 60%),
+    radial-gradient(ellipse at 80% 10%, color-mix(in oklch, var(--secondary) 14%, transparent), transparent 55%);
+  pointer-events: none;
 }
 
-.hero p {
-  color: var(--muted);
+.hero {
+  animation: rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.hero h1 {
+  margin: 0 0 14px;
+  font-size: clamp(2.1rem, 9vw, 2.9rem);
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+}
+.hero h1 em {
+  font-style: normal;
+  color: var(--primary);
+}
+
+/* 01 Photos → 02 3D model → 03 Steps */
+.how {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: how;
+}
+.how li {
+  counter-increment: how;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.how li::before {
+  content: '0' counter(how);
+  display: inline-grid;
+  place-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+.how .lucide {
+  color: var(--primary);
 }
 
 .pick-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  padding: 14px;
+  animation: rise 0.5s 60ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.pick-empty {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 22px 12px 18px;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius);
+  background: repeating-linear-gradient(-45deg, transparent 0 10px, color-mix(in oklch, var(--muted) 70%, transparent) 10px 11px);
+  text-align: center;
+}
+.pick-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 8px;
+  border-radius: 14px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 1.3rem;
+}
+.pick-live {
+  align-self: center;
+  font-size: 0.9rem;
+  color: var(--muted-foreground);
 }
 
 .preview {
@@ -31,7 +115,7 @@
   max-height: 50svh;
   object-fit: contain;
   border-radius: 10px;
-  background: var(--surface-2);
+  background: var(--muted);
 }
 
 .field {
@@ -39,45 +123,104 @@
   flex-direction: column;
   gap: 6px;
   font-size: 0.9rem;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .field input {
   font: inherit;
   font-size: 16px; /* stops iOS zooming in on focus */
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
   padding: 10px 12px;
 }
-
-.recent h2 {
-  font-size: 1rem;
-  color: var(--muted);
+.field input:focus {
+  outline: 2px solid color-mix(in oklch, var(--ring) 50%, transparent);
+  border-color: var(--ring);
 }
 
+/* Recent scans: dense rows, not big tiles. */
+.recent h2 {
+  margin: 0 0 8px 2px;
+}
 .recent ul {
   list-style: none;
   padding: 0;
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--card);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
 }
-
+.recent li {
+  animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.recent li + li {
+  border-top: 1px solid var(--border);
+}
 .recent a {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px 8px 8px;
   text-decoration: none;
-  font-size: 0.9rem;
+  transition: background 0.15s;
+}
+.recent a:hover {
+  background: var(--muted);
+}
+.recent img,
+.recent-ph {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--muted);
+}
+.recent-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  line-height: 1.25;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.recent-status {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.recent-status.done {
+  background: var(--secondary-soft);
+  color: var(--secondary);
+}
+.recent-status.failed {
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+  color: var(--destructive);
+}
+.recent-go {
+  color: var(--muted-foreground);
 }
 
-.recent img {
-  width: 100%;
-  aspect-ratio: 1;
-  object-fit: cover;
-  border-radius: 10px;
-  background: var(--surface-2);
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero, .pick-card, .recent li, .camera-guide { animation: none !important; }
 }

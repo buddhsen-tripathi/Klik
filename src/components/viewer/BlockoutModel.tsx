@@ -146,7 +146,7 @@ function BlockoutPart(props: {
             <boxGeometry args={[1, 1, 1]} />
           )}
           <meshStandardMaterial ref={mat} color={part.color} roughness={0.7} metalness={0.05} transparent opacity={ghost ? 0.35 : 1} />
-          <Edges threshold={20} color={highlight ? '#ff9f1c' : '#1f2329'} />
+          <Edges threshold={20} color={highlight ? '#d87943' : '#1f2329'} />
         </mesh>
       )}
       {highlight && !ghost && (

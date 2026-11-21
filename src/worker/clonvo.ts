@@ -43,7 +43,7 @@ async function callTool<T>(
         authorization: `Bearer ${apiKey}`,
         'content-type': 'application/json',
         // Groups these calls in Clonvo's Activity view.
-        'x-title': 'Assemble on the Go',
+        'x-title': 'KLIK',
         'http-referer': 'https://assemble-on-the-go.workers.dev',
         // Clonvo Traces: nest this gateway call under our span for it (see otel.ts).
         ...(traceId ? { traceparent: traceparent(traceId, spanId) } : {}),

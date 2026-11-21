@@ -11,8 +11,8 @@
   padding: 8px 14px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
+  background: var(--card);
+  color: var(--foreground);
   font-weight: 600;
   font-size: 0.85rem;
   box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
@@ -20,7 +20,7 @@
 }
 
 .tray-pill.busy {
-  border-color: var(--accent);
+  border-color: var(--primary);
 }
 
 .spinner.small {
@@ -41,8 +41,8 @@
   overflow-y: auto;
   padding: 12px;
   border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
+  background: var(--card);
+  color: var(--foreground);
   border: 1px solid var(--border);
   box-shadow: 0 20px 50px rgb(0 0 0 / 0.35);
 }
@@ -75,7 +75,7 @@
   height: 44px;
   border-radius: 8px;
   object-fit: cover;
-  background: var(--surface-2);
+  background: var(--muted);
   flex: none;
 }
 
@@ -94,7 +94,7 @@
 
 .stage {
   font-size: 0.8rem;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .stage.done {
@@ -103,7 +103,7 @@
 
 .stage.failed,
 .stage.upload-failed {
-  color: var(--danger);
+  color: var(--destructive);
 }
 
 .notice {
@@ -119,8 +119,8 @@
   max-width: calc(100% - 32px);
   padding: 10px 10px 10px 16px;
   border-radius: 14px;
-  background: var(--surface);
-  color: var(--text);
+  background: var(--card);
+  color: var(--foreground);
   border: 1px solid var(--border);
   box-shadow: 0 12px 30px rgb(0 0 0 / 0.35);
   font-weight: 600;

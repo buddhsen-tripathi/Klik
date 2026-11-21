@@ -152,7 +152,7 @@ export function buildInstructions(s: AgentSnapshot): string {
   const a = s.analysis
   const ref = a.reference
   const language = LANGUAGES.find((l) => l.code === getLang())!.english
-  return `You are the voice helper inside "Assemble on the Go", an app that guides people through taking apart and putting together real objects. The user's hands are busy, so you drive the app with tools.
+  return `You are the voice helper inside "KLIK", an app that guides people through taking apart and putting together real objects. The user's hands are busy, so you drive the app with tools.
 ${language === 'English' ? '' : `
 LANGUAGE: The app is set to ${language}. Always speak ${language} (the guide text you get is already in ${language}). If the user clearly switches to another language, follow them.
 `}

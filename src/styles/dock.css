@@ -1,7 +1,7 @@
 /* ---------- app-like scan screen: pinned 3D view, scrolling steps, bottom dock ---------- */
 
 :root {
-  --topbar-h: 57px;
+  --topbar-h: 52px;
 }
 
 /* One screen tall on every size: the 3D view never scrolls away; only the panel scrolls. */
@@ -25,13 +25,6 @@
 }
 
 @media (max-width: 899px) {
-  :root {
-    --topbar-h: 49px;
-  }
-  .topbar {
-    padding-top: calc(env(safe-area-inset-top) + 8px);
-    padding-bottom: 8px;
-  }
   /* Pull-up sheet: the 3D view sits above it and is resized when the sheet snaps (see SheetTop). */
   .workbench {
     position: relative;
@@ -52,7 +45,7 @@
     padding: 0 16px;
     gap: 10px;
     border-radius: 18px 18px 0 0;
-    background: var(--bg);
+    background: var(--background);
     box-shadow: 0 -6px 24px rgb(0 0 0 / 0.14);
     transition: height 0.25s ease;
   }
@@ -70,7 +63,7 @@
     z-index: 2;
     margin: 0 -16px;
     padding: 4px 16px 6px;
-    background: var(--bg);
+    background: var(--background);
     touch-action: none;
   }
   .sheet-main {
@@ -178,7 +171,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  background: color-mix(in srgb, var(--background) 88%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid var(--border);
@@ -213,7 +206,7 @@
 @keyframes live-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 55%, transparent);
   }
   50% {
     box-shadow: 0 0 0 8px transparent;
@@ -231,11 +224,11 @@
   align-items: baseline;
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .step-progress-label .link-btn {
   font-size: 0.8rem;
-  color: var(--muted);
+  color: var(--muted-foreground);
   text-decoration: underline;
   padding: 0;
 }
@@ -264,16 +257,16 @@
   display: block;
   height: 6px;
   border-radius: 99px;
-  background: var(--surface-2);
+  background: var(--muted);
 }
 .step-progress-bar li.done span {
-  background: color-mix(in srgb, var(--accent) 55%, var(--surface-2));
+  background: color-mix(in srgb, var(--primary) 55%, var(--muted));
 }
 .step-progress-bar li.current span {
-  background: var(--accent);
+  background: var(--primary);
 }
 .step-progress-bar li.fix span {
-  outline: 1px dashed var(--danger);
+  outline: 1px dashed var(--destructive);
   outline-offset: -1px;
 }
 
@@ -286,7 +279,7 @@
   border: 1px dashed var(--border);
   border-radius: 12px;
   background: transparent;
-  color: var(--muted);
+  color: var(--muted-foreground);
   font: inherit;
   font-size: 0.85rem;
   cursor: pointer;
@@ -309,8 +302,8 @@
   padding: 0 0.3em;
   border: 0;
   border-radius: 99px;
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--primary);
+  color: var(--primary-foreground);
   font: inherit;
   font-size: 0.85em;
   font-weight: 700;
@@ -348,8 +341,8 @@ span.marker {
   transform: translateY(-20px);
   border: 2px solid #fff;
   border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--primary);
+  color: var(--primary-foreground);
   font: 700 0.85rem/1 system-ui, sans-serif;
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.3);
   cursor: pointer;
@@ -372,12 +365,12 @@ span.marker {
   gap: 6px;
   margin: -2px 0 12px;
   padding-left: 1.1em;
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.92rem;
   line-height: 1.45;
 }
 .step-details li::marker {
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .sheet-top .translating {
@@ -395,15 +388,31 @@ span.marker {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--muted);
+  color: var(--muted-foreground);
+}
+.lang-picker.compact {
+  height: 34px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+}
+.lang-picker.compact select {
+  border: 0;
+  padding: 0 4px;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.78rem;
+  cursor: pointer;
 }
 .lang-picker select {
   max-width: 9.5em;
   padding: 4px 6px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
+  background: var(--card);
+  color: var(--foreground);
   font: inherit;
   font-size: 0.85rem;
 }

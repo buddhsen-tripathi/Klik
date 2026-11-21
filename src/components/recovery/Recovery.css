@@ -4,27 +4,27 @@
 .sheet { width: min(440px, 100%); display: grid; gap: 10px; max-height: calc(100svh - 32px); overflow-y: auto; }
 .sheet h2 { margin: 0; }
 .sheet p { margin: 0; }
-.sheet textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); resize: vertical; }
+.sheet textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--foreground); resize: vertical; }
 .sheet label.btn { text-align: center; cursor: pointer; }
-.sheet .link-btn { justify-self: center; color: var(--muted); }
-.sheet-preview { width: 100%; max-height: 220px; object-fit: contain; border-radius: 10px; background: var(--surface-2); }
+.sheet .link-btn { justify-self: center; color: var(--muted-foreground); }
+.sheet-preview { width: 100%; max-height: 220px; object-fit: contain; border-radius: 10px; background: var(--muted); }
 
-.recovery-card { display: grid; gap: 12px; border: 1.5px solid var(--accent); }
+.recovery-card { display: grid; gap: 12px; border: 1.5px solid var(--primary); }
 .recovery-head { display: flex; gap: 12px; align-items: flex-start; }
 .recovery-head img { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; flex: none; }
 .recovery-head p { margin: 0; line-height: 1.45; }
 .status-strip { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 0; padding: 0; }
-.status-strip li { display: inline-flex; align-items: center; gap: 3px; min-width: 34px; justify-content: center; padding: 3px 7px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--muted); }
+.status-strip li { display: inline-flex; align-items: center; gap: 3px; min-width: 34px; justify-content: center; padding: 3px 7px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--muted); color: var(--muted-foreground); }
 .status-strip li span { font-weight: 500; }
 .status-strip li.st-done { background: color-mix(in srgb, #2f9e44 18%, transparent); color: #2b8a3e; }
 .status-strip li.st-wrong { background: color-mix(in srgb, #e8590c 20%, transparent); color: #d9480f; }
 .status-strip li.st-unsure { background: color-mix(in srgb, #868e96 18%, transparent); }
-.status-strip li.resume { outline: 2px solid var(--accent); outline-offset: 1px; }
+.status-strip li.resume { outline: 2px solid var(--primary); outline-offset: 1px; }
 .mistakes { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
-.mistakes span { display: block; color: var(--muted); font-size: 0.9rem; }
+.mistakes span { display: block; color: var(--muted-foreground); font-size: 0.9rem; }
 .recovery-actions { display: grid; gap: 8px; }
 .recovery-actions .row { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .recovery-banner { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; font-size: 0.9rem;
-  background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  background: color-mix(in srgb, var(--primary) 16%, transparent); }
 .recovery-banner .link-btn { color: inherit; text-decoration: underline; padding: 0; }

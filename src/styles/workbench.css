@@ -72,7 +72,7 @@
 }
 
 .viewer-bar .btn.ghost {
-  background: var(--surface);
+  background: var(--card);
 }
 
 .viewer-progress {
@@ -81,7 +81,7 @@
   right: 0;
   bottom: 0;
   height: 3px;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
   background-size: 50% 100%;
   animation: slide 1.4s linear infinite;
 }
@@ -96,8 +96,8 @@
 }
 
 .part-label {
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--primary);
+  color: var(--primary-foreground);
   font: 700 12px/1.2 system-ui, sans-serif;
   padding: 3px 8px;
   border-radius: 999px;
@@ -133,7 +133,7 @@
 }
 
 .parts-line {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.9rem;
   margin: 0 0 10px;
 }
@@ -142,8 +142,8 @@
   margin: 10px 0 0;
   padding: 8px 10px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--danger) 12%, transparent);
-  color: var(--text);
+  background: color-mix(in srgb, var(--destructive) 12%, transparent);
+  color: var(--foreground);
 }
 
 .overview p {
@@ -164,7 +164,7 @@
 
 .facts dt {
   font-size: 0.75rem;
-  color: var(--muted);
+  color: var(--muted-foreground);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -197,13 +197,13 @@ details.card summary {
   background: none;
   border: 0;
   padding: 6px 0;
-  color: var(--text);
+  color: var(--foreground);
   cursor: pointer;
   text-align: left;
 }
 
 .step-list li.current button {
-  color: var(--accent);
+  color: var(--primary);
   font-weight: 700;
 }
 
@@ -213,7 +213,7 @@ details.card summary {
     /* Exactly one screen tall: the 3D view fills it and only the panel scrolls.
        (flex: 1 alone let a long panel stretch the viewer past the window.) */
     flex: 0 0 auto;
-    height: calc(100svh - 57px);
+    height: calc(100svh - var(--topbar-h) - env(safe-area-inset-top));
     min-height: 0;
     overflow: hidden;
   }
@@ -227,18 +227,18 @@ details.card summary {
     width: 400px;
     overflow-y: auto;
     border-left: 1px solid var(--border);
-    background: var(--bg);
+    background: var(--background);
   }
 }
 
 .step-revision {
   margin: -4px 0 8px;
   font-size: 0.85rem;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .step-revision summary {
   cursor: pointer;
-  color: color-mix(in srgb, var(--accent) 70%, var(--text));
+  color: color-mix(in srgb, var(--primary) 70%, var(--foreground));
   font-weight: 600;
 }
 .step-revision ul {

@@ -25,7 +25,7 @@
   height: 56px;
   border-radius: 8px;
   object-fit: cover;
-  background: var(--surface-2);
+  background: var(--muted);
 }
 .shop-info {
   display: grid;
@@ -48,11 +48,11 @@
 }
 .shop-price .lucide {
   width: 0.9em;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .shop-warning {
   padding: 8px 10px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  background: color-mix(in srgb, var(--destructive) 12%, transparent);
   font-size: 0.85rem;
 }

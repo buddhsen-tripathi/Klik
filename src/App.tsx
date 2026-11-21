@@ -1,10 +1,10 @@
-import { Hexagon } from 'lucide-react'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { cameraSupported } from './camera'
 import Capture from './components/camera/Capture'
 import CameraScreen from './components/camera/CameraScreen'
 import JobTray from './components/JobTray'
 import LanguagePicker from './components/LanguagePicker'
+import Logo from './components/brand/Logo'
 
 // three.js is ~1 MB, so only load it once the user opens a scan.
 const ScanPage = lazy(() => import('./components/scan/ScanPage'))
@@ -43,11 +43,8 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <a href="#/" className="brand">
-          <Hexagon className="brand-mark" aria-hidden />
-          Assemble on the Go
-        </a>
-        <LanguagePicker />
+        <Logo />
+        <LanguagePicker compact />
       </header>
       {route.page === 'scan' ? (
         <Suspense fallback={<main className="scan-page centered muted">Loading…</main>}>

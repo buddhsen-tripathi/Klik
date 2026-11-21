@@ -94,7 +94,7 @@ export async function exportRequestTrace(apiKey: string, trace: RequestTrace, st
       start: trace.start,
       end: Date.now(),
       ok: status < 500,
-      attributes: { 'gen_ai.operation.name': 'invoke_agent', 'gen_ai.agent.name': 'assemble-on-the-go', 'session.id': trace.sessionId ?? undefined, 'http.response.status_code': status, ...attributes },
+      attributes: { 'gen_ai.operation.name': 'invoke_agent', 'gen_ai.agent.name': 'klik', 'session.id': trace.sessionId ?? undefined, 'http.response.status_code': status, ...attributes },
     },
     ...trace.spans.map((s) => ({ ...s, parentSpanId: trace.rootId, attributes: { ...s.attributes, 'session.id': trace.sessionId ?? undefined } })),
   ])

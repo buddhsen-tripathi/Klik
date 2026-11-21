@@ -27,17 +27,68 @@
   transform: scaleX(-1);
 }
 
-.icon-btn {
+.icon-btn,
+.glass-btn {
+  display: inline-grid;
+  place-items: center;
   width: 40px;
   height: 40px;
-  border-radius: 50%;
-  border: 1px solid rgb(255 255 255 / 0.4);
-  background: rgb(0 0 0 / 0.35);
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  background: rgb(15 15 18 / 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: #fff;
-  font-size: 1.3rem;
-  line-height: 1;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.9rem;
   cursor: pointer;
 }
+.glass-btn {
+  display: inline-flex;
+  gap: 6px;
+  width: auto;
+  padding: 0 14px;
+}
+.camera-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.camera-top .lang-picker.compact {
+  height: 40px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  background: rgb(15 15 18 / 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #fff;
+}
+.camera-top .lang-picker.compact select {
+  color: #fff;
+  background: transparent;
+}
+.camera-top .lang-picker option {
+  color: #000;
+}
+
+/* Faint viewfinder corners: frame the object. */
+.viewfinder {
+  position: absolute;
+  inset: 22% 14% 30%;
+  pointer-events: none;
+}
+.viewfinder i {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgb(255 255 255 / 0.55);
+}
+.viewfinder .tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 12px; }
+.viewfinder .tr { top: 0; right: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 12px; }
+.viewfinder .bl { bottom: 0; left: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 12px; }
+.viewfinder .br { bottom: 0; right: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 12px; }
 
 /* Live status over the 3D view while Gemini streams / fal builds. */
 .live-status {
@@ -50,7 +101,7 @@
   gap: 10px;
   padding: 10px 14px 13px;
   border-radius: 12px;
-  background: var(--surface);
+  background: var(--card);
   border: 1px solid var(--border);
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.15);
   overflow: hidden;
@@ -70,7 +121,7 @@
 }
 
 .live-status small {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.8rem;
   white-space: nowrap;
   overflow: hidden;
@@ -82,11 +133,11 @@
   top: 0;
   left: 0;
   right: 0;
-  padding: calc(env(safe-area-inset-top) + 12px) 16px 24px;
+  padding: calc(env(safe-area-inset-top) + 12px) 16px 28px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: linear-gradient(rgb(0 0 0 / 0.55), transparent);
+  background: linear-gradient(rgb(0 0 0 / 0.5), transparent);
 }
 
 .brand.light {
@@ -106,7 +157,7 @@
 }
 
 .link-btn.dark {
-  color: var(--text);
+  color: var(--foreground);
 }
 
 .camera-guide {
@@ -117,17 +168,20 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
-  border-radius: 16px;
-  background: rgb(0 0 0 / 0.55);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  padding: 12px 16px 12px 12px;
+  border-radius: 18px;
+  background: rgb(15 15 18 / 0.6);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .camera-guide p {
   margin: 0;
-  font-weight: 600;
-  font-size: 0.95rem;
+  font-weight: 500;
+  font-size: 0.98rem;
+  line-height: 1.35;
 }
 
 .dots::after {
@@ -162,13 +216,13 @@
 .face {
   position: absolute;
   inset: 0;
-  border: 2px solid var(--accent);
-  background: rgb(255 159 28 / 0.12);
+  border: 2px solid var(--primary);
+  background: color-mix(in oklch, var(--primary) 14%, transparent);
   border-radius: 4px;
 }
 
 .face.got {
-  background: rgb(255 159 28 / 0.75);
+  background: color-mix(in oklch, var(--primary) 80%, transparent);
 }
 
 .face.front { transform: translateZ(calc(var(--s) / 2)); }
@@ -189,7 +243,7 @@
   position: absolute;
   width: 22px;
   height: 22px;
-  border: 3px solid var(--accent);
+  border: 3px solid var(--primary);
   filter: drop-shadow(0 0 4px rgb(0 0 0 / 0.5));
 }
 
@@ -208,7 +262,7 @@
   padding: 8px 14px 8px 10px;
   border-radius: 14px;
   background: rgb(20 22 26 / 0.85);
-  border: 1px solid rgb(255 159 28 / 0.6);
+  border: 1px solid color-mix(in oklch, var(--primary) 60%, transparent);
   box-shadow: 0 10px 30px rgb(0 0 0 / 0.4);
   white-space: nowrap;
   transform-origin: 50% 100%;
@@ -232,7 +286,7 @@
 }
 
 .hover-text small {
-  color: #ffcf8a;
+  color: var(--chart-3);
   font-size: 0.75rem;
 }
 
@@ -248,7 +302,7 @@
 .mini-cube span {
   position: absolute;
   inset: 0;
-  border: 1.5px solid var(--accent);
+  border: 1.5px solid var(--primary);
 }
 
 .mini-cube span:nth-child(1) { transform: translateZ(calc(var(--s) / 2)); }
@@ -312,7 +366,7 @@
   width: 52px;
   height: 52px;
   padding: 0;
-  border: 2px solid var(--accent);
+  border: 2px solid var(--primary);
   border-radius: 10px;
   overflow: hidden;
   background: none;
@@ -327,7 +381,12 @@
 }
 
 .shot.slot {
-  border: 2px dashed rgb(255 255 255 / 0.25);
+  display: grid;
+  place-items: center;
+  border: 1.5px dashed rgb(255 255 255 / 0.22);
+  color: rgb(255 255 255 / 0.35);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
   cursor: default;
 }
 
@@ -352,8 +411,8 @@
   min-height: 44px;
   padding: 8px 16px;
   border-radius: 999px;
-  border: 1px solid rgb(255 255 255 / 0.35);
-  background: transparent;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  background: rgb(255 255 255 / 0.08);
   color: #fff;
   font-weight: 600;
   cursor: pointer;
@@ -369,9 +428,9 @@
 }
 
 .camera-buttons .done.ready {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-text);
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .camera-buttons .toggle:disabled,
@@ -381,14 +440,25 @@
 }
 
 .shutter {
-  width: 72px;
-  height: 72px;
+  width: 76px;
+  height: 76px;
   border-radius: 50%;
   border: 4px solid #fff;
   background: #fff;
-  box-shadow: inset 0 0 0 4px #000;
+  box-shadow: inset 0 0 0 5px #000;
   cursor: pointer;
-  transition: transform 0.1s;
+  transition: transform 0.12s, background 0.2s;
+}
+/* Auto: the shutter turns orange and breathes while it waits for a steady view. */
+.shutter.auto {
+  background: var(--primary);
+  animation: shutter-breathe 1.8s ease-in-out infinite;
+}
+@keyframes shutter-breathe {
+  50% { box-shadow: inset 0 0 0 9px #000; }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
 }
 
 .shutter:active {

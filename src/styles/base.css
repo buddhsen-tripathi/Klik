@@ -1,33 +1,66 @@
+/* KLIK theme (shadcn-style tokens). Light by default; dark follows the system. */
 :root {
-  --bg: #f4f2ee;
-  --surface: #ffffff;
-  --surface-2: #ebe8e2;
-  --text: #17191d;
-  --muted: #646a73;
-  --border: #dcd8d0;
-  --accent: #ff9f1c;
-  --accent-text: #1a1206;
-  --danger: #c2410c;
-  --viewer-bg: radial-gradient(circle at 50% 35%, #ffffff 0%, #e6e2db 100%);
-  --radius: 14px;
-  color-scheme: light dark;
-  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.2101 0.0318 264.6645);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2101 0.0318 264.6645);
+  --popover: oklch(1 0 0);
+  --primary: oklch(0.6716 0.1368 48.513);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.536 0.0398 196.028);
+  --secondary-foreground: oklch(1 0 0);
+  --muted: oklch(0.967 0.0029 264.5419);
+  --muted-foreground: oklch(0.551 0.0234 264.3637);
+  --accent: oklch(0.9491 0 0);
+  --accent-foreground: oklch(0.2101 0.0318 264.6645);
+  --destructive: oklch(0.6368 0.2078 25.3313);
+  --destructive-foreground: oklch(0.9851 0 0);
+  --border: oklch(0.9276 0.0058 264.5313);
+  --input: oklch(0.9276 0.0058 264.5313);
+  --ring: oklch(0.6716 0.1368 48.513);
+  --chart-3: oklch(0.8721 0.0864 68.5474);
+  --font-sans: Outfit, ui-sans-serif, sans-serif, system-ui;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --radius: 0.75rem;
+  --shadow-sm: 0px 1px 4px 0px hsl(0 0% 0% / 0.05), 0px 1px 2px -1px hsl(0 0% 0% / 0.05);
+  --shadow-lg: 0px 1px 4px 0px hsl(0 0% 0% / 0.05), 0px 4px 6px -1px hsl(0 0% 0% / 0.05);
+  --shadow-xl: 0px 1px 4px 0px hsl(0 0% 0% / 0.05), 0px 8px 10px -1px hsl(0 0% 0% / 0.05);
+  --shadow-float: 0 12px 32px -8px hsl(0 0% 0% / 0.18), 0 2px 6px hsl(0 0% 0% / 0.06);
+  /* Tinted primary for soft fills (chips, badges, selection). */
+  --primary-soft: color-mix(in oklch, var(--primary) 12%, var(--background));
+  --secondary-soft: color-mix(in oklch, var(--secondary) 14%, var(--background));
+  --viewer-bg: radial-gradient(circle at 50% 38%, oklch(1 0 0) 0%, oklch(0.955 0.004 264) 100%);
+  color-scheme: light;
+  font-family: var(--font-sans);
   line-height: 1.5;
-  color: var(--text);
-  background: var(--bg);
+  color: var(--foreground);
+  background: var(--background);
   -webkit-font-smoothing: antialiased;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #14161a;
-    --surface: #1d2025;
-    --surface-2: #272b31;
-    --text: #eef0f3;
-    --muted: #9aa1ab;
-    --border: #30353c;
-    --danger: #fb923c;
-    --viewer-bg: radial-gradient(circle at 50% 35%, #2b3038 0%, #121417 100%);
+  :root:not(.light) {
+    --background: oklch(0.1797 0.0043 308.1928);
+    --foreground: oklch(0.8109 0 0);
+    --card: oklch(0.1822 0 0);
+    --card-foreground: oklch(0.8109 0 0);
+    --popover: oklch(0.1797 0.0043 308.1928);
+    --primary: oklch(0.7214 0.1337 49.9802);
+    --primary-foreground: oklch(0.1797 0.0043 308.1928);
+    --secondary: oklch(0.594 0.0443 196.0233);
+    --secondary-foreground: oklch(0.1797 0.0043 308.1928);
+    --muted: oklch(0.252 0 0);
+    --muted-foreground: oklch(0.6268 0 0);
+    --accent: oklch(0.3211 0 0);
+    --accent-foreground: oklch(0.8109 0 0);
+    --destructive: oklch(0.6368 0.2078 25.3313);
+    --destructive-foreground: oklch(0.1797 0.0043 308.1928);
+    --border: oklch(0.252 0 0);
+    --input: oklch(0.252 0 0);
+    --ring: oklch(0.7214 0.1337 49.9802);
+    --shadow-float: 0 12px 32px -8px hsl(0 0% 0% / 0.6), 0 2px 6px hsl(0 0% 0% / 0.3);
+    --viewer-bg: radial-gradient(circle at 50% 38%, oklch(0.26 0.004 300) 0%, oklch(0.16 0.004 300) 100%);
+    color-scheme: dark;
   }
 }
 
@@ -37,7 +70,7 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--background);
   min-height: 100svh;
 }
 
@@ -63,39 +96,73 @@ button {
 }
 
 .topbar {
-  padding: calc(env(safe-area-inset-top) + 12px) 16px 12px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: calc(env(safe-area-inset-top) + var(--topbar-h, 52px));
+  padding: env(safe-area-inset-top) 16px 0;
   border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  background: color-mix(in oklch, var(--background) 85%, transparent);
+  backdrop-filter: saturate(1.4) blur(12px);
+  -webkit-backdrop-filter: saturate(1.4) blur(12px);
 }
 
 .brand {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-weight: 700;
   text-decoration: none;
-  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+.brand-word {
+  font-weight: 800;
+  font-size: 1.2rem;
+  letter-spacing: 0.06em;
+}
+.brand.light {
+  color: #fff;
+}
+.klik-mark {
+  display: block;
+  transition: transform 0.25s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.brand:hover .klik-mark,
+.brand:active .klik-mark {
+  transform: rotate(-8deg) scale(1.06);
 }
 
-.brand-mark {
-  color: var(--accent);
-  font-size: 1.3rem;
+/* Small uppercase labels and numbers use the mono face: the "spec sheet" voice. */
+.eyebrow,
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.mono {
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 /* ---------- shared bits ---------- */
 
 .card {
-  background: var(--surface);
+  background: var(--card);
+  color: var(--card-foreground);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: calc(var(--radius) + 4px);
   padding: 16px;
+  box-shadow: var(--shadow-sm);
 }
 
 .btn {
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius);
   padding: 10px 18px;
   font-weight: 600;
+  transition: transform 0.1s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
   cursor: pointer;
   text-decoration: none;
   display: inline-flex;
@@ -109,15 +176,37 @@ button {
   cursor: default;
 }
 
+.btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+.btn:focus-visible,
+.segmented button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 .btn.primary {
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 1px 0 hsl(0 0% 100% / 0.25) inset, 0 4px 14px -4px color-mix(in oklch, var(--primary) 70%, transparent);
+}
+.btn.primary:not(:disabled):hover {
+  background: color-mix(in oklch, var(--primary) 90%, black);
+}
+
+.btn.secondary {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
 }
 
 .btn.ghost {
-  background: transparent;
-  color: var(--text);
+  background: var(--card);
+  color: var(--foreground);
   border-color: var(--border);
+  box-shadow: var(--shadow-sm);
+}
+.btn.ghost:not(:disabled):hover {
+  background: var(--muted);
 }
 
 .btn.big {
@@ -141,7 +230,7 @@ button {
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .small {
@@ -149,7 +238,7 @@ button {
 }
 
 .error {
-  color: var(--danger);
+  color: var(--destructive);
 }
 
 .chips {
@@ -159,7 +248,8 @@ button {
 }
 
 .chip {
-  background: var(--surface-2);
+  background: var(--muted);
+  border: 1px solid var(--border);
   border-radius: 999px;
   padding: 4px 10px;
   font-size: 0.85rem;
@@ -167,25 +257,27 @@ button {
 
 .segmented {
   display: inline-flex;
-  background: var(--surface-2);
-  border-radius: 999px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 3px;
 }
 
 .segmented button {
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: var(--muted-foreground);
   padding: 8px 14px;
-  border-radius: 999px;
+  border-radius: calc(var(--radius) - 3px);
   font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
 }
 
 .segmented button.on {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: var(--shadow-lg);
 }
 
 .segmented.small button {
