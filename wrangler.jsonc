@@ -35,8 +35,9 @@
   ],
 
   "vars": {
-    // Swap to gemini-4-hydrogen if analysis is too slow or costly.
-    "GEMINI_MODEL": "gemini-4-neon",
+    // Planner. Hydrogen gets steps on screen in ~33 s vs ~50 s on gemini-4-neon with the same parts and
+    // fasteners in tests; switch back to neon if plans for complex objects look thin.
+    "GEMINI_MODEL": "gemini-4-hydrogen",
     // MINIMAL | LOW | MEDIUM | HIGH. LOW keeps analysis fast; raise it if parts/steps look sloppy.
     "ANALYSIS_THINKING": "LOW",
     // Model for the per-subassembly step-writer agents (run in parallel).
