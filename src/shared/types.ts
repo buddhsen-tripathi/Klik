@@ -28,6 +28,41 @@ export interface Part {
   rotation: [number, number, number]
   color: string
   removalDirection: RemovalDirection
+  /** Fasteners are listed in the hardware table and shown as chips on steps. Missing on old scans. */
+  kind?: 'component' | 'fastener'
+  /** Exact spec when known, e.g. "M4 × 12 mm Phillips pan head" or "Ø8 × 30 mm wooden dowel". */
+  spec?: string | null
+  /** How many identical pieces this part stands for (4 for "4x M6 bolts"). */
+  quantity?: number
+}
+
+/** What the web research found, condensed for the planner and the step writers. */
+export interface Reference {
+  /** How well the documents match the photographed object. */
+  match: 'exact' | 'similar' | 'none'
+  /** The product the documents describe. */
+  product: string
+  /** Official overall size [width, height, depth] in cm, if the documents give it. */
+  dimensions: [number, number, number] | null
+  hardware: { name: string; spec: string; quantity: number | null; usedFor: string }[]
+  /** Named components from the manual / parts list. */
+  components: string[]
+  /** Official assembly order (or teardown order for repair guides), short lines. */
+  officialSteps: string[]
+  officialOrder: 'assembly' | 'disassembly' | null
+  tools: string[]
+  notes: string[]
+  sources: Source[]
+}
+
+/** First pass: exactly what is this, and what to search for. */
+export interface ObjectIdentity {
+  objectName: string
+  brand: string | null
+  model: string | null
+  category: string
+  queries: string[]
+  specQuestion: string
 }
 
 export interface Step {
@@ -71,6 +106,10 @@ export interface Analysis {
   groups?: Group[]
   /** Manuals / guides found on the web and given to the step writers. */
   sources?: Source[]
+  /** Reference sheet from the web research, when there was one. */
+  reference?: Reference | null
+  /** Where the overall dimensions came from. */
+  dimensionsSource?: 'docs' | 'estimate'
   /** Photo (0-based) Gemini picked for the 3D model. Every part's box2d refers to this photo. */
   bestPhotoIndex: number
 }
@@ -113,8 +152,17 @@ export interface ScanProgress {
   /** Parts list is complete (Gemini is now writing steps). */
   partsFinal: boolean
   fal: { status: 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED'; queuePosition: number | null; log: string | null } | null
-  /** Web lookup for manuals/specs (Clonvo), if the planner asked for one. */
-  research?: { status: 'searching' | 'done' | 'failed'; query: string; sources: Source[] } | null
+  /** Pipeline phase while analyzing. */
+  phase?: 'identifying' | 'researching' | 'planning' | 'writing'
+  /** What we think it is, from the identify pass. */
+  identity?: { objectName: string; brand: string | null; model: string | null } | null
+  /** Web lookup for manuals/specs (Clonvo). */
+  research?: {
+    status: 'searching' | 'reading' | 'done' | 'failed' | 'skipped'
+    queries: string[]
+    sources: Source[]
+    match?: Reference['match']
+  } | null
   /** Step-writing subagents, one per subassembly. */
   agents?: AgentProgress[]
 }

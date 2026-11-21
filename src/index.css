@@ -1169,3 +1169,109 @@ details.card summary {
   color: inherit;
   overflow-wrap: anywhere;
 }
+
+/* Research-first pipeline checklist (before parts arrive). */
+.pipeline {
+  list-style: none;
+  margin: 16px auto;
+  padding: 0;
+  max-width: 420px;
+  display: grid;
+  gap: 12px;
+}
+
+.pipeline li {
+  position: relative;
+  padding-left: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pipeline li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  box-sizing: border-box;
+}
+
+.pipeline li.pl-done::before {
+  content: '✓';
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #1a1206;
+  font-size: 11px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
+
+.pipeline li.pl-active::before {
+  border-color: var(--surface-2);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+
+.pipeline li.pl-todo {
+  opacity: 0.5;
+}
+
+.pipeline small {
+  color: var(--muted);
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-match {
+  font-size: 0.9rem;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.size-line {
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.size-line strong {
+  color: var(--text, inherit);
+}
+
+.hardware-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.hardware-table td {
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.hardware-table td.qty {
+  width: 3.2em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hardware-table small,
+.selected-part .spec {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.chip.hardware {
+  font-variant-numeric: tabular-nums;
+}

@@ -20,6 +20,9 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
   const step = stepIndex >= 0 ? steps[stepIndex] : null
   const selected = selectedId ? analysis.parts.find((p) => p.id === selectedId) : null
   const partName = (id: string) => analysis.parts.find((p) => p.id === id)?.name ?? id
+  const fasteners = analysis.parts.filter((p) => p.kind === 'fastener')
+  const ref = analysis.reference
+  const stepFasteners = step ? fasteners.filter((f) => step.partIds.includes(f.id)) : []
   const last = steps.length - 1
 
   return (
@@ -56,6 +59,16 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
           <p className="parts-line">
             <strong>Parts:</strong> {step.partIds.map(partName).join(', ')}
           </p>
+          {stepFasteners.length > 0 && (
+            <div className="chips">
+              {stepFasteners.map((f) => (
+                <span key={f.id} className="chip hardware">
+                  🔩 {(f.quantity ?? 1) > 1 ? `${f.quantity}× ` : ''}
+                  {f.spec ?? f.name}
+                </span>
+              ))}
+            </div>
+          )}
           {step.tools.length > 0 && (
             <div className="chips">
               {step.tools.map((t) => (
@@ -70,6 +83,15 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
       ) : (
         <section className="card overview">
           <p>{analysis.summary}</p>
+          {ref && ref.match !== 'none' && (
+            <p className={`doc-match ${ref.match}`}>
+              📘 {ref.match === 'exact' ? 'Matched the manual for' : 'Using a similar model’s docs:'} <strong>{ref.product}</strong>
+            </p>
+          )}
+          <p className="size-line">
+            📏 <strong>{analysis.dimensions.map((n) => +n.toFixed(1)).join(' × ')} cm</strong> (W × H × D){' '}
+            {analysis.dimensionsSource === 'docs' ? '· from the manufacturer' : '· estimated from the photo'}
+          </p>
           <dl className="facts">
             <div>
               <dt>Difficulty</dt>
@@ -96,6 +118,34 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
               </div>
             </>
           )}
+          {fasteners.length > 0 && (
+            <>
+              <h3>Hardware</h3>
+              <table className="hardware-table">
+                <tbody>
+                  {fasteners.map((f) => (
+                    <tr key={f.id}>
+                      <td className="qty">{f.quantity ?? 1}×</td>
+                      <td>
+                        {f.name}
+                        {f.spec && <small>{f.spec}</small>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+          {ref && ref.notes.length > 0 && (
+            <>
+              <h3>From the documentation</h3>
+              <ul className="list">
+                {ref.notes.map((n) => (
+                  <li key={n}>{n}</li>
+                ))}
+              </ul>
+            </>
+          )}
           {analysis.safety.length > 0 && (
             <>
               <h3>Safety</h3>
@@ -111,7 +161,11 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
 
       {selected && (
         <section className="card selected-part">
-          <h3>{selected.name}</h3>
+          <h3>
+            {(selected.quantity ?? 1) > 1 ? `${selected.quantity}× ` : ''}
+            {selected.name}
+          </h3>
+          {selected.spec && <p className="spec">{selected.spec}</p>}
           <p className="muted">
             {selected.material}
             {selected.visible ? '' : ' · hidden part (inferred, not seen in the photo)'}

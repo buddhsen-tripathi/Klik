@@ -1,6 +1,6 @@
 import { NonRetryableError } from 'cloudflare:workflows'
 import { parsePartialJson } from './partial-json'
-import type { Analysis, Group, Identification, Part, RemovalDirection, Step } from '../shared/types'
+import type { Analysis, Group, Identification, ObjectIdentity, Part, Reference, RemovalDirection, Source, Step } from '../shared/types'
 
 const API = 'https://generativelanguage.googleapis.com/v1beta/models'
 
@@ -32,13 +32,9 @@ const ANALYSIS_SCHEMA = {
       type: 'integer',
       description: '0-based index of the photo that shows the most parts with the whole object in frame. All box2d values refer to this photo.',
     },
-    researchQuery: {
-      type: ['string', 'null'],
-      description:
-        'Web search query for a manual, teardown/repair guide or spec sheet, when one would help (branded or model-specific products, appliances, electronics, flat-pack furniture). null for simple generic objects.',
-    },
     summary: { type: 'string', description: 'One short sentence (max 25 words) on what it is and how it is held together.' },
-    dimensions: { ...vec3, description: 'Estimated overall [width, height, depth] in cm.' },
+    dimensions: { ...vec3, description: 'Overall [width, height, depth] in cm.' },
+    dimensionsSource: { type: 'string', enum: ['docs', 'estimate'], description: '"docs" only if taken from the reference sheet.' },
     difficulty: { type: 'string', enum: ['easy', 'medium', 'hard'] },
     estimatedMinutes: { type: 'integer' },
     tools: { type: 'array', items: { type: 'string' } },
@@ -64,9 +60,16 @@ const ANALYSIS_SCHEMA = {
           position: { ...vec3, description: 'Centre of the part in cm in the blockout frame.' },
           rotation: { ...vec3, description: 'Euler rotation in degrees [x, y, z]. A horizontal cylinder along X is [0, 0, 90].' },
           color: { type: 'string', description: 'Hex colour like #8a6d4b, matching the photo.' },
+          kind: { type: 'string', enum: ['component', 'fastener'] },
+          spec: {
+            type: ['string', 'null'],
+            description: 'Exact spec, e.g. "M4 x 12 mm Phillips pan head", "Ø8 x 30 mm dowel", "15 mm cam lock". null if unknown.',
+          },
+          quantity: { type: 'integer', description: 'How many identical pieces this part stands for.' },
+          // Keep removalDirection last: the stream treats a part as complete once it arrives.
           removalDirection: { type: 'string', enum: DIRECTIONS },
         },
-        required: ['id', 'name', 'material', 'visible', 'box2d', 'shape', 'size', 'position', 'rotation', 'color', 'removalDirection'],
+        required: ['id', 'name', 'material', 'visible', 'box2d', 'shape', 'size', 'position', 'rotation', 'color', 'kind', 'spec', 'quantity', 'removalDirection'],
       },
     },
     groups: {
@@ -84,10 +87,27 @@ const ANALYSIS_SCHEMA = {
     },
     assumptions: { type: 'array', items: { type: 'string' } },
   },
-  required: ['objectName', 'bestPhotoIndex', 'researchQuery', 'summary', 'dimensions', 'difficulty', 'estimatedMinutes', 'tools', 'safety', 'parts', 'groups', 'assumptions'],
+  required: ['objectName', 'bestPhotoIndex', 'summary', 'dimensions', 'dimensionsSource', 'difficulty', 'estimatedMinutes', 'tools', 'safety', 'parts', 'groups', 'assumptions'],
 }
 
-function buildPrompt(hint: string | null, photoCount: number): string {
+function referenceText(ref: Reference): string {
+  const lines = [
+    `Documents describe: ${ref.product} (match with the photographed object: ${ref.match.toUpperCase()})`,
+    ref.dimensions ? `Official overall size (W x H x D): ${ref.dimensions.map((n) => +n.toFixed(1)).join(' x ')} cm` : 'Official overall size: not found',
+    ref.hardware.length
+      ? `Hardware:\n${ref.hardware.map((h) => `- ${h.quantity ?? '?'}x ${h.name}: ${h.spec}${h.usedFor ? ` (used for: ${h.usedFor})` : ''}`).join('\n')}`
+      : 'Hardware: not listed',
+    ref.components.length ? `Components: ${ref.components.join('; ')}` : '',
+    ref.officialSteps.length
+      ? `Official ${ref.officialOrder ?? 'step'} order:\n${ref.officialSteps.map((x, i) => `${i + 1}. ${x}`).join('\n')}`
+      : '',
+    ref.tools.length ? `Tools named in the documents: ${ref.tools.join(', ')}` : '',
+    ref.notes.length ? `Notes:\n${ref.notes.map((n) => `- ${n}`).join('\n')}` : '',
+  ]
+  return lines.filter(Boolean).join('\n')
+}
+
+function buildPrompt(hint: string | null, photoCount: number, ref: Reference | null): string {
   const photos =
     photoCount > 1
       ? `You get ${photoCount} photos of the SAME object from different angles (photo 0 first). Use all of them to work out the parts, including ones only visible from some angles.
@@ -99,7 +119,9 @@ ${hint ? `The user says this is: "${hint}".\n` : ''}${photos}
 Return JSON matching the schema. Rules:
 
 PARTS
-- Break the object into the parts a person would actually separate by hand or with common tools (3 to 16 parts). Group tiny identical fasteners into one part (e.g. "4x M6 bolts").
+- Break the object into the parts a person would actually separate by hand or with common tools (3 to 20 parts).
+- FASTENERS: one part per fastener TYPE, with kind="fastener", its exact "spec" and "quantity" (e.g. "8x M6 x 30 mm hex bolts" and "4x M4 x 12 mm Phillips screws" are two parts). Never lump different screws, bolts, dowels or cam locks together. Identical ones are one part with a quantity.
+- Everything else is kind="component" (quantity > 1 only for identical pieces, e.g. 4 wheels).
 - Include hidden parts you are confident exist (screws under caps, internal brackets) with visible=false and box2d=null, and say so in "assumptions".
 - box2d: tight box around each part visible in photo bestPhotoIndex, [ymin, xmin, ymax, xmax] normalised 0-1000. Boxes may overlap.
 
@@ -116,9 +138,20 @@ GROUPS (you do NOT write the steps; a specialist writes them for each group)
 - Complex objects: 2 to 5 subassemblies a person would deal with separately (e.g. "Wheels", "Seat assembly", "Frame"), in disassembly order, the base/frame last.
 - Every part goes in exactly one group.
 
-RESEARCH
-- researchQuery: if you recognise a specific product or model, or the object is an appliance/electronics/flat-pack kit, give a precise search query for its manual or teardown guide (brand + model + "disassembly" or "assembly instructions"). Otherwise null.
-- Put power, sharp-edge and spring warnings in "safety".`
+- Put power, sharp-edge and spring warnings in "safety".
+${
+  ref && ref.match !== 'none'
+    ? `
+REFERENCE SHEET (condensed from the manual / repair guides found on the web)
+${referenceText(ref)}
+
+How to use it:
+- ${ref.match === 'exact' ? 'It is this exact product: use the official dimensions (dimensionsSource="docs") and scale the blockout to them.' : 'It is a SIMILAR product: use it as guidance but trust the photos for sizes (dimensionsSource="estimate" unless the size clearly matches).'}
+- Take fastener specs and quantities from the hardware list${ref.match === 'exact' ? '' : ' where they plausibly apply'}; name components the way the documents do.
+- The photos win over the documents for what is actually there; mention conflicts in "assumptions".`
+    : `
+No documentation was found: estimate sizes (dimensionsSource="estimate") and give fastener specs only when you can tell from the photos (else spec=null).`
+}`
 }
 
 export interface InlineImage {
@@ -287,15 +320,16 @@ export async function analyzePhotos(opts: {
   model: string
   images: InlineImage[]
   hint: string | null
+  reference: Reference | null
   thinkingLevel: ThinkingLevel | null
-  onPartial?: (partial: Analysis, partsFinal: boolean, raw: any) => void
+  onPartial?: (partial: Analysis, partsFinal: boolean) => void
   onThought?: (chunk: string) => void
-}): Promise<{ analysis: Analysis; researchQuery: string | null }> {
+}): Promise<Analysis> {
   const answer = await streamText({
     apiKey: opts.apiKey,
     model: opts.model,
     images: opts.images,
-    text: buildPrompt(opts.hint, opts.images.length),
+    text: buildPrompt(opts.hint, opts.images.length, opts.reference),
     schema: ANALYSIS_SCHEMA,
     thinkingLevel: opts.thinkingLevel,
     onThought: (c) => opts.onThought?.(c),
@@ -307,11 +341,168 @@ export async function analyzePhotos(opts: {
       const parts = Array.isArray(raw.parts) ? raw.parts.filter((p: any) => p && 'removalDirection' in p) : []
       // Parts are final once Gemini has moved on to the groups.
       const partsFinal = 'groups' in raw
-      opts.onPartial(normalizeAnalysis({ ...raw, parts, groups: [] }, opts.images.length), partsFinal, raw)
+      opts.onPartial(normalizeAnalysis({ ...raw, parts, groups: [] }, opts.images.length), partsFinal)
     },
   })
+  return normalizeAnalysis(JSON.parse(answer), opts.images.length)
+}
+
+// ---------- research pipeline: identify -> (Clonvo search) -> reference sheet ----------
+
+const IDENTITY_SCHEMA = {
+  type: 'object',
+  properties: {
+    objectName: {
+      type: 'string',
+      description:
+        'Most specific name you can justify, e.g. "IKEA KALLAX 2x2 shelf unit", "Bosch PSB 1800 LI-2 drill", "1:18 diecast model of a Porsche 356 Speedster".',
+    },
+    scale: {
+      type: 'string',
+      enum: ['real', 'toy_or_scale_model'],
+      description: 'Is this the real full-size thing, or a toy / miniature / scale model of it?',
+    },
+    brand: { type: ['string', 'null'], description: 'Brand if visible or recognisable, else null.' },
+    model: { type: ['string', 'null'], description: 'Model / product line if visible or recognisable, else null.' },
+    category: { type: 'string', description: 'Generic category, e.g. "flat-pack bookcase", "cordless drill", "ballpoint pen".' },
+    queries: {
+      type: 'array',
+      items: { type: 'string' },
+      minItems: 2,
+      maxItems: 3,
+      description:
+        '2-3 web searches: (1) the official manual / assembly instructions PDF, (2) a teardown or repair guide or parts diagram listing screws, (3) optionally a spec sheet with dimensions. Use brand + model when known, else the category.',
+    },
+    specQuestion: {
+      type: 'string',
+      description: 'One question for a cited web answer: exact dimensions plus the screws/fasteners (type, size, count) used in this product.',
+    },
+  },
+  required: ['objectName', 'scale', 'brand', 'model', 'category', 'queries', 'specQuestion'],
+}
+
+/** Fast first pass: exactly what is this, and what should we search for? */
+export async function identifyObject(opts: {
+  apiKey: string
+  model: string
+  images: InlineImage[]
+  hint: string | null
+}): Promise<ObjectIdentity> {
+  const answer = await streamText({
+    apiKey: opts.apiKey,
+    model: opts.model,
+    images: opts.images,
+    text: `Identify the object in ${opts.images.length > 1 ? 'these photos (same object, different angles)' : 'this photo'} as precisely as you can: read logos, labels, model numbers and stickers.
+${opts.hint ? `The user pointed their camera at it and it was tagged "${opts.hint}"; trust that for what KIND of thing it is (e.g. a toy vs the real thing).\n` : ''}Watch the scale: a toy car, a model kit or a miniature is NOT the real vehicle/building. Name it as what it physically is, and search for THAT (e.g. the diecast model's own disassembly), not the full-size original.
+Then write web searches that would find its manual, a teardown/repair guide listing its screws, and its exact dimensions.`,
+    schema: IDENTITY_SCHEMA,
+    thinkingLevel: 'MINIMAL',
+    onText: () => {},
+    onThought: () => {},
+  })
   const raw = JSON.parse(answer)
-  return { analysis: normalizeAnalysis(raw, opts.images.length), researchQuery: typeof raw.researchQuery === 'string' && raw.researchQuery.trim() ? raw.researchQuery.trim() : null }
+  let name = str(raw?.objectName, opts.hint ?? 'object')
+  if (raw?.scale === 'toy_or_scale_model' && !/toy|model|miniature|diecast|scale|replica|kit/i.test(name)) name = `${name} (toy / scale model)`
+  const queries = strList(raw?.queries).map((q) => q.trim()).filter(Boolean).slice(0, 3)
+  return {
+    objectName: name,
+    brand: str(raw?.brand).trim() || null,
+    model: str(raw?.model).trim() || null,
+    category: str(raw?.category, name),
+    queries: queries.length ? queries : [`${name} assembly instructions manual`, `${name} disassembly screws`],
+    specQuestion: str(raw?.specQuestion).trim() || `What are the exact dimensions of the ${name}, and which screws or fasteners (type, size, count) does it use?`,
+  }
+}
+
+const REFERENCE_SCHEMA = {
+  type: 'object',
+  properties: {
+    match: {
+      type: 'string',
+      enum: ['exact', 'similar', 'none'],
+      description: 'exact = documents are for this very product/model; similar = same kind of product, different model; none = nothing useful.',
+    },
+    product: { type: 'string', description: 'The product the documents describe.' },
+    dimensions: { type: ['array', 'null'], items: { type: 'number' }, minItems: 3, maxItems: 3, description: 'Official [width, height, depth] in cm, converted from the documents. null if not stated.' },
+    hardware: {
+      type: 'array',
+      description: 'Every distinct fastener / hardware type in the documents. One entry per type; never merge different sizes.',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'e.g. "Hex bolt", "Cam lock", "Wooden dowel", "Phillips pan-head screw".' },
+          spec: { type: 'string', description: 'Size/type exactly as documented, e.g. "M6 x 30 mm", "Ø8 x 30 mm", "#8 x 3/4 in". "unknown" if not given.' },
+          quantity: { type: ['integer', 'null'] },
+          usedFor: { type: 'string', description: 'Which parts it joins.' },
+        },
+        required: ['name', 'spec', 'quantity', 'usedFor'],
+      },
+    },
+    components: { type: 'array', items: { type: 'string' }, description: 'Named components / panels from the parts list.' },
+    officialOrder: { type: ['string', 'null'], enum: ['assembly', 'disassembly', null], description: 'Which direction officialSteps are written in.' },
+    officialSteps: { type: 'array', items: { type: 'string' }, description: 'The documented sequence, one short line per step, max 20.' },
+    tools: { type: 'array', items: { type: 'string' }, description: 'Tools the documents name, with sizes.' },
+    notes: { type: 'array', items: { type: 'string' }, description: 'Torque values, orientation warnings, hidden clips, things easy to get wrong. Max 8.' },
+  },
+  required: ['match', 'product', 'dimensions', 'hardware', 'components', 'officialOrder', 'officialSteps', 'tools', 'notes'],
+}
+
+/**
+ * Condense raw web pages into a small reference sheet, so the planner and step writers get
+ * facts (dimensions, every fastener type, official order) instead of 30k characters of pages.
+ */
+export async function buildReference(opts: {
+  apiKey: string
+  model: string
+  thinkingLevel: ThinkingLevel | null
+  identity: ObjectIdentity
+  image: InlineImage
+  notes: string
+  sources: Source[]
+}): Promise<Reference> {
+  const id = opts.identity
+  const answer = await streamText({
+    apiKey: opts.apiKey,
+    model: opts.model,
+    images: [opts.image],
+    text: `The photo shows: ${id.objectName}${id.brand ? ` (brand: ${id.brand})` : ''}${id.model ? ` (model: ${id.model})` : ''}, a ${id.category}.
+Below are web search results (manuals, guides, spec pages), numbered by source. Extract a reference sheet for taking this object apart and putting it back together.
+- Only state facts the pages support; convert inches/mm to cm for dimensions but keep fastener specs exactly as documented.
+- Judge "match" honestly against the photo: different model = "similar".
+- Every distinct screw/bolt/dowel/cam-lock size is its own hardware entry.
+
+SEARCH RESULTS
+${opts.notes}`,
+    schema: REFERENCE_SCHEMA,
+    thinkingLevel: opts.thinkingLevel,
+    onText: () => {},
+    onThought: () => {},
+  })
+  return normalizeReference(JSON.parse(answer), opts.sources)
+}
+
+function normalizeReference(raw: any, sources: Source[]): Reference {
+  const dims = Array.isArray(raw?.dimensions) && raw.dimensions.length === 3 && raw.dimensions.every((n: unknown) => typeof n === 'number' && n > 0)
+  return {
+    match: ['exact', 'similar', 'none'].includes(raw?.match) ? raw.match : 'none',
+    product: str(raw?.product),
+    dimensions: dims ? (raw.dimensions as [number, number, number]) : null,
+    hardware: (Array.isArray(raw?.hardware) ? raw.hardware : [])
+      .map((h: any) => ({
+        name: str(h?.name).trim(),
+        spec: str(h?.spec, 'unknown').trim(),
+        quantity: typeof h?.quantity === 'number' && h.quantity > 0 ? Math.round(h.quantity) : null,
+        usedFor: str(h?.usedFor).trim(),
+      }))
+      .filter((h: Reference['hardware'][number]) => h.name)
+      .slice(0, 20),
+    components: strList(raw?.components).slice(0, 30),
+    officialSteps: strList(raw?.officialSteps).slice(0, 20),
+    officialOrder: raw?.officialOrder === 'assembly' || raw?.officialOrder === 'disassembly' ? raw.officialOrder : null,
+    tools: strList(raw?.tools).slice(0, 12),
+    notes: strList(raw?.notes).slice(0, 8),
+    sources,
+  }
 }
 
 // ---------- step-writer subagent: one per group ----------
@@ -335,14 +526,14 @@ export async function writeGroupSteps(opts: {
   image: InlineImage
   analysis: Analysis
   groupIndex: number
-  research: string | null
+  reference: Reference | null
 }): Promise<Step[]> {
   const { analysis, groupIndex } = opts
   const groups = analysis.groups ?? []
   const group = groups[groupIndex]
   const mine = new Set(group.partIds)
   const describe = (p: Part) =>
-    `- ${p.id}: ${p.name} (${p.material}${p.visible ? '' : ', hidden'}; comes off ${p.removalDirection})`
+    `- ${p.id}: ${(p.quantity ?? 1) > 1 ? `${p.quantity}x ` : ''}${p.name}${p.spec ? ` [${p.spec}]` : ''} (${p.kind === 'fastener' ? 'fastener, ' : ''}${p.material}${p.visible ? '' : ', hidden'}; comes off ${p.removalDirection})`
   const whole = groups.length === 1
   const before = groups.slice(0, groupIndex).map((g) => g.name)
   const after = groups.slice(groupIndex + 1).map((g) => g.name)
@@ -363,12 +554,19 @@ Already removed before your group: ${before.length ? before.join(', ') : 'nothin
 Still attached after your group: ${after.length ? after.join(', ') : 'nothing (yours is the base)'}.
 `
 }
-${opts.research ? `REFERENCE MATERIAL from the web (may be for a similar model; prefer it over guessing when it matches):\n${opts.research}\n` : ''}
+${
+  opts.reference && opts.reference.match !== 'none'
+    ? `REFERENCE SHEET from the manual / guides (${opts.reference.match} match; follow it where it matches the photo):\n${referenceText(opts.reference)}\n`
+    : 'No documentation was found for this object; work from the photo.\n'
+}
 Write the steps in DISASSEMBLY order${whole ? '' : `: first detach "${group.name}" from what is still attached (unless it is the base), then take it apart`}.
 Rules:
 - partIds may only use these ids: ${group.partIds.join(', ')}. Each of them in exactly one step, except the one base part that stays put.
-- 1 to 3 parts per step. Name the exact tool (e.g. "Phillips #2 screwdriver", "5 mm Allen key").
-- "assembly" is the reverse action for the same parts.
+- 1 to 3 parts per step. A fastener part goes in the step where it is removed (usually together with what it holds).
+- Every instruction names the fastener (count and spec, e.g. "the 4 M4 x 12 mm Phillips screws") and the tool that fits it (e.g. "Phillips #2 screwdriver", "4 mm Allen key").
+- Only state exact sizes that appear in a part's [spec] or in the reference sheet. If a size is not known, describe it plainly and hedge the tool ("the 4 small Phillips screws, likely a #1 driver"); never invent thread sizes or lengths.
+- If the documents give an official order, follow it: an official ASSEMBLY order is reversed for disassembly.
+- "assembly" is the reverse action for the same parts, with any torque / alignment / orientation note from the documents.
 - Put power, sharp-edge and spring warnings in "caution".`
 
   const answer = await streamText({
@@ -497,6 +695,9 @@ export function normalizeAnalysis(raw: any, photoCount = 1): Analysis {
       rotation: vec(p?.rotation, [0, 0, 0]),
       color: /^#[0-9a-f]{6}$/i.test(str(p?.color)) ? p.color : '#9aa4b2',
       removalDirection: DIRECTIONS.includes(p?.removalDirection) ? p.removalDirection : 'up',
+      kind: p?.kind === 'fastener' ? 'fastener' : 'component',
+      spec: typeof p?.spec === 'string' && p.spec.trim() && p.spec.trim().toLowerCase() !== 'unknown' ? p.spec.trim() : null,
+      quantity: Math.max(1, Math.round(num(p?.quantity, 1))),
     }
   })
 
@@ -509,6 +710,7 @@ export function normalizeAnalysis(raw: any, photoCount = 1): Analysis {
     objectName: str(raw?.objectName, 'Unknown object'),
     summary: str(raw?.summary),
     dimensions: vec(raw?.dimensions, [30, 30, 30]),
+    dimensionsSource: raw?.dimensionsSource === 'docs' ? 'docs' : 'estimate',
     difficulty,
     estimatedMinutes: Math.max(1, Math.round(num(raw?.estimatedMinutes, 15))),
     tools: strList(raw?.tools),
@@ -517,6 +719,7 @@ export function normalizeAnalysis(raw: any, photoCount = 1): Analysis {
     steps,
     groups,
     sources: Array.isArray(raw?.sources) ? raw.sources : [],
+    reference: raw?.reference ?? null,
     assumptions: strList(raw?.assumptions),
     bestPhotoIndex: Math.min(photoCount - 1, Math.max(0, Math.round(num(raw?.bestPhotoIndex, 0)))),
   }

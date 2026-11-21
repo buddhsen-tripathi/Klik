@@ -1,8 +1,8 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers'
 import { NonRetryableError } from 'cloudflare:workflows'
-import type { Analysis, ScanProgress, Step } from '../shared/types'
-import { researchObject, type Research } from './clonvo'
-import { analyzePhotos, writeGroupSteps, type ThinkingLevel } from './gemini'
+import type { Analysis, ObjectIdentity, Reference, ScanProgress, Step } from '../shared/types'
+import { researchObject } from './clonvo'
+import { analyzePhotos, buildReference, identifyObject, writeGroupSteps, type ThinkingLevel } from './gemini'
 import { getFalResult, getFalStatus, submitSam3d, type FalJob } from './fal'
 
 export interface ScanParams {
@@ -99,73 +99,113 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
     }
 
     const thinking = THINKING_LEVELS.find((l) => l === this.env.ANALYSIS_THINKING) ?? null
+    const progress: ScanProgress = { thought: null, partsFinal: false, fal: null, phase: 'identifying', identity: null, research: null, agents: [] }
+    const saveProgress = () => setFields({ progress: JSON.stringify(progress) })
+    const loadImages = async () => {
+      const rows = await photoRows()
+      return Promise.all(rows.map(async (r) => ({ base64: await readPhoto(r), mimeType: r.photo_type })))
+    }
+    const fail = async (err: unknown) => {
+      await step.do('mark-failed', async () => {
+        await setFields({ stage: 'failed', error: String((err as Error)?.message ?? err) })
+      })
+    }
 
-    // 1. Planner (main agent), streamed: name, parts, blockout, subassembly groups, and whether
-    //    to look anything up. Research and the 3D job start mid-stream, as soon as they can.
-    let planned: { analysis: Analysis; research: Research | null }
+    // 1. Identify: exactly what is it (brand / model), and what to search for.
+    let identity: ObjectIdentity
+    try {
+      identity = await step.do('identify', { retries: { limit: 2, delay: '3 seconds', backoff: 'exponential' }, timeout: '2 minutes' }, async () => {
+        await setFields({ stage: 'analyzing', fal_job: null, progress: JSON.stringify(progress) })
+        const scan = await db.prepare('SELECT hint FROM scans WHERE id = ?').bind(scanId).first<{ hint: string | null }>()
+        // Fast model: this is mostly reading logos and labels.
+        return identifyObject({ apiKey: this.env.GEMINI_API_KEY, model: this.env.IDENTIFY_MODEL, images: await loadImages(), hint: scan?.hint ?? null })
+      })
+    } catch (err) {
+      return fail(err)
+    }
+    progress.identity = { objectName: identity.objectName, brand: identity.brand, model: identity.model }
+
+    // 2. Research (Clonvo): manual + teardown/parts-list searches and a cited spec question, in
+    //    parallel, then condensed into a reference sheet (dimensions, every fastener type, official
+    //    order). Optional: without a key, or if nothing is found, the planner works from the photos.
+    let reference: Reference | null = null
+    if (this.env.CLONVO_API_KEY) {
+      reference = await step
+        .do('research', { retries: { limit: 1, delay: '5 seconds' }, timeout: '3 minutes' }, async () => {
+          progress.phase = 'researching'
+          progress.research = { status: 'searching', queries: identity.queries, sources: [] }
+          await saveProgress()
+          const found = await researchObject(this.env.CLONVO_API_KEY, identity.queries, identity.specQuestion)
+          progress.research = { status: 'reading', queries: identity.queries, sources: found.sources }
+          await saveProgress()
+          const [first] = await photoRows()
+          const ref = await buildReference({
+            apiKey: this.env.GEMINI_API_KEY,
+            model: this.env.STEPS_MODEL || this.env.GEMINI_MODEL,
+            thinkingLevel: thinking,
+            identity,
+            image: { base64: await readPhoto(first), mimeType: first.photo_type },
+            notes: found.notes,
+            sources: found.sources,
+          })
+          return ref
+        })
+        .catch((err) => {
+          console.warn('research failed, continuing from photos only', err)
+          return null
+        })
+      progress.research = reference
+        ? { status: 'done', queries: identity.queries, sources: reference.sources, match: reference.match }
+        : { status: 'failed', queries: identity.queries, sources: [] }
+    } else {
+      progress.research = { status: 'skipped', queries: [], sources: [] }
+    }
+
+    // 3. Planner (main agent), streamed and grounded on the reference sheet: parts (one per
+    //    fastener type, with spec + quantity), blockout, subassembly groups. The 3D job starts
+    //    as soon as the parts list is final.
+    let planned: { analysis: Analysis; reference: Reference | null }
     try {
       planned = await step.do(
         'analyze',
         { retries: { limit: 2, delay: '5 seconds', backoff: 'exponential' }, timeout: '4 minutes' },
         async () => {
-          await setFields({ stage: 'analyzing', fal_job: null })
+          progress.phase = 'planning'
+          await setFields({ fal_job: null, progress: JSON.stringify(progress) })
           const scan = await db.prepare('SELECT hint FROM scans WHERE id = ?').bind(scanId).first<{ hint: string | null }>()
-          const rows = await photoRows()
-          const images = await Promise.all(rows.map(async (r) => ({ base64: await readPhoto(r), mimeType: r.photo_type })))
+          const images = await loadImages()
 
           // Save the partial analysis + latest thought ~1x/s so the app can draw parts as they arrive.
-          const progress: ScanProgress = { thought: null, partsFinal: false, fal: null, research: null, agents: [] }
           let thoughtBuf = ''
           let latest: Analysis | null = null
           let lastWrite = 0
           let writes: Promise<unknown> = Promise.resolve()
           let early: Promise<unknown> | null = null
-          let researching: Promise<Research | null> | null = null
-          const save = (force = false) => {
+          const save = () => {
             const now = Date.now()
-            if (!force && now - lastWrite < LIVE_WRITE_MS) return
+            if (now - lastWrite < LIVE_WRITE_MS) return
             lastWrite = now
             const fields: Record<string, string> = { progress: JSON.stringify(progress) }
             if (latest) fields.analysis = JSON.stringify(latest)
             writes = writes.then(() => setFields(fields)).catch(() => {})
           }
-          const startResearch = (query: string) => {
-            if (researching || !this.env.CLONVO_API_KEY) return
-            progress.research = { status: 'searching', query, sources: [] }
-            save(true)
-            researching = researchObject(this.env.CLONVO_API_KEY, query).then(
-              (r) => {
-                progress.research = { status: 'done', query, sources: r.sources }
-                save(true)
-                return r
-              },
-              (err) => {
-                // Research is a bonus: the step writers fall back to the photo alone.
-                console.warn('research failed', err)
-                progress.research = { status: 'failed', query, sources: [] }
-                save(true)
-                return null
-              },
-            )
-          }
 
-          const { analysis, researchQuery } = await analyzePhotos({
+          const analysis = await analyzePhotos({
             apiKey: this.env.GEMINI_API_KEY,
             model: this.env.GEMINI_MODEL,
             images,
-            hint: scan?.hint ?? null,
+            hint: scan?.hint && scan.hint !== identity.objectName ? `${identity.objectName} (camera tag: ${scan.hint})` : identity.objectName,
+            reference,
             thinkingLevel: thinking,
             onThought: (chunk) => {
               thoughtBuf = (thoughtBuf + chunk).slice(-2000)
               progress.thought = thoughtHeadline(thoughtBuf)
               save()
             },
-            onPartial: (partial, partsFinal, raw) => {
-              latest = partial
+            onPartial: (partial, partsFinal) => {
+              latest = { ...partial, reference }
               progress.partsFinal = partsFinal
               save()
-              // The planner writes researchQuery right after the name, so the lookup overlaps the parts.
-              if (typeof raw?.researchQuery === 'string' && raw.researchQuery.trim()) startResearch(raw.researchQuery.trim())
               // Start the 3D job as soon as the parts are final, while the planner is still grouping.
               if (partsFinal && !early && this.env.FAL_KEY && partial.parts.length > 0) {
                 early = submitFal(partial).catch((err) => console.warn('early fal submit failed, will retry', err))
@@ -173,29 +213,30 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
             },
           })
           if (analysis.parts.length === 0) throw new NonRetryableError('Gemini could not find any parts in this photo')
-          if (researchQuery) startResearch(researchQuery)
-          // (cast: TS can't see the assignment inside the stream callbacks)
-          const research = await (researching as Promise<Research | null> | null)
           await early
           await writes
 
+          analysis.reference = reference
+          analysis.sources = reference?.sources ?? []
+          // Official dimensions win for an exact match, whatever the planner wrote.
+          if (reference?.match === 'exact' && reference.dimensions) {
+            analysis.dimensions = reference.dimensions
+            analysis.dimensionsSource = 'docs'
+          } else if (!reference || reference.match === 'none') analysis.dimensionsSource = 'estimate'
           progress.thought = null
           progress.partsFinal = true
+          progress.phase = 'writing'
           progress.agents = (analysis.groups ?? []).map((g) => ({ id: g.id, name: g.name, status: 'running' as const }))
-          analysis.sources = research?.sources ?? []
           await setFields({
             analysis: JSON.stringify(analysis),
             progress: JSON.stringify(progress),
             model_photo_index: analysis.bestPhotoIndex,
           })
-          return { analysis, research }
+          return { analysis, reference }
         },
       )
     } catch (err) {
-      await step.do('mark-failed', async () => {
-        await setFields({ stage: 'failed', error: String((err as Error)?.message ?? err) })
-      })
-      return
+      return fail(err)
     }
 
     // 2. Step-writer subagents, one per subassembly, all in parallel. Each is its own durable
@@ -225,7 +266,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
               image: { base64: await readPhoto(row), mimeType: row.photo_type },
               analysis,
               groupIndex: i,
-              research: planned.research?.notes || null,
+              reference: planned.reference,
             })
             await markAgent(i, 'done')
             return steps

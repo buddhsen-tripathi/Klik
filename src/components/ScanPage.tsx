@@ -80,7 +80,11 @@ export default function ScanPage({ id }: { id: string }) {
     return (
       <main className="scan-page">
         <PhotoWithBoxes scan={scan} />
-        <Progress label={scan.progress?.thought ? `${scan.progress.thought}…` : STAGE_LABEL[scan.stage]} />
+        {scan.stage === 'analyzing' && scan.progress?.phase ? (
+          <Pipeline scan={scan} />
+        ) : (
+          <Progress label={scan.progress?.thought ? `${scan.progress.thought}…` : STAGE_LABEL[scan.stage]} />
+        )}
       </main>
     )
   }
@@ -171,8 +175,8 @@ function LiveStatus({ scan }: { scan: ScanView }) {
       detail = parts ? `${parts} part${parts > 1 ? 's' : ''} found${p?.partsFinal ? ' · splitting into subassemblies' : ''}` : null
     }
     const r = p?.research
-    if (r?.status === 'searching') extra = `🔎 Looking up “${r.query}”`
-    else if (r?.status === 'done') extra = `🔎 ${r.sources.length} source${r.sources.length === 1 ? '' : 's'} found for “${r.query}”`
+    if (r?.status === 'done') extra = `📘 ${MATCH_LABEL[r.match ?? 'none']} · ${r.sources.length} source${r.sources.length === 1 ? '' : 's'}`
+    else if (r?.status === 'failed') extra = '📘 No documentation found, working from the photos'
   } else {
     const fal = p?.fal
     if (fal?.status === 'IN_QUEUE') title = `3D scan queued${fal.queuePosition != null ? ` (#${fal.queuePosition + 1})` : ''}`
@@ -190,6 +194,49 @@ function LiveStatus({ scan }: { scan: ScanView }) {
       </div>
       <div className="viewer-progress" />
     </div>
+  )
+}
+
+const MATCH_LABEL = { exact: 'Exact manual match', similar: 'Similar model’s manual', none: 'No matching manual' }
+
+/** Checklist shown before the parts arrive: identify → search manuals → read them → plan. */
+function Pipeline({ scan }: { scan: ScanView }) {
+  const p = scan.progress!
+  const order = ['identifying', 'researching', 'planning', 'writing'] as const
+  const at = order.indexOf(p.phase ?? 'identifying')
+  const state = (i: number) => (i < at ? 'pl-done' : i === at ? 'pl-active' : 'pl-todo')
+  const id = p.identity
+  const r = p.research
+  const who = id ? [id.brand, id.model].filter(Boolean).join(' · ') : ''
+
+  const researchTitle =
+    r?.status === 'skipped'
+      ? 'Documentation lookup off'
+      : r?.status === 'reading'
+        ? `Reading ${r.sources.length} page${r.sources.length === 1 ? '' : 's'} for dimensions and screws`
+        : r?.status === 'done'
+          ? MATCH_LABEL[r.match ?? 'none']
+          : r?.status === 'failed'
+            ? 'No documentation found'
+            : 'Searching manuals and teardown guides'
+
+  return (
+    <ol className="pipeline" aria-live="polite">
+      <li className={state(0)}>
+        <strong>{id ? id.objectName : 'Identifying the exact model'}</strong>
+        {who && <small>{who}</small>}
+      </li>
+      <li className={r?.status === 'skipped' ? 'pl-todo' : state(1)}>
+        <strong>{researchTitle}</strong>
+        {r?.status === 'searching' && r.queries.map((q) => <small key={q}>🔎 {q}</small>)}
+        {r && r.sources.length > 0 && (
+          <small className="sources-line">{r.sources.slice(0, 4).map((src) => new URL(src.url).hostname.replace(/^www\./, '')).join(' · ')}</small>
+        )}
+      </li>
+      <li className={state(2)}>
+        <strong>{at === 2 && p.thought ? `${p.thought}…` : 'Planning parts and fasteners'}</strong>
+      </li>
+    </ol>
   )
 }
 
