@@ -11,6 +11,7 @@ import { toBase64 } from './util'
 import { getOrTranslate } from './translate'
 import { isLang } from '../shared/i18n'
 import { getFalResult, getFalStatus, layoutsOf, submitSam3d, type FalJob } from './fal'
+import { hqCandidates, imageThenMesh, meshUrl, submitIsolate } from './partModel'
 
 export interface ScanParams {
   scanId: string
@@ -384,6 +385,55 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
       await setFields({ analysis: JSON.stringify(analysis), progress: JSON.stringify(progress) })
     })
 
+    // 3b. High-quality part models start now, alongside the step writers and SAM 3D: every component
+    //     (hidden ones too) is redrawn clean and turned into its own mesh. Each one is published the
+    //     moment it's saved, so the app streams parts in as they finish.
+    type SavedFile = ModelFile & { key: string }
+    const samFiles: SavedFile[] = []
+    const hqFiles: SavedFile[] = []
+    const samCount = { done: 0, total: 0 }
+    const hqParts = this.env.FAL_KEY ? hqCandidates(analysis, Math.max(0, Number(this.env.MAX_HQ_PARTS ?? 10) || 0)) : []
+    const writeModelFiles = async (withProgress: boolean) => {
+      const all = [...samFiles, ...hqFiles]
+      const fields: Record<string, string | number | null> = {
+        model_files: all.length ? JSON.stringify(all) : null,
+        model_bytes: all.reduce((n, f) => n + (f.bytes ?? 0), 0) || null,
+      }
+      // Progress belongs to the step writers until the 3D stage; only the 3D loop writes it.
+      if (withProgress) fields.progress = JSON.stringify({ fal: { done: samCount.done + hqFiles.length, total: samCount.total + hqParts.length } } satisfies ScanProgress)
+      await setFields(fields)
+    }
+    const hqDone = Promise.all(
+      hqParts.map((part) =>
+        // Three durable stages, so a replay reuses the fal jobs already paid for.
+        step
+          .do(`hq-a-${part.id}`, { retries: { limit: 1, delay: '5 seconds' }, timeout: '1 minute' }, async () => {
+            const rows = (await photoRows()).slice(0, 3)
+            const photos = await Promise.all(rows.map(async (r) => `data:${r.photo_type};base64,${await readPhoto(r)}`))
+            return { job: await submitIsolate(this.env.FAL_KEY, analysis, part, photos), at: Date.now() }
+          })
+          .then(({ job, at }) =>
+            step
+              .do(`hq-b-${part.id}`, { retries: { limit: 1, delay: '5 seconds' }, timeout: '3 minutes' }, () => imageThenMesh(this.env.FAL_KEY, job))
+              .then(({ imageUrl, mesh }) =>
+                step.do(`hq-c-${part.id}`, { retries: { limit: 2, delay: '5 seconds' }, timeout: '5 minutes' }, async (): Promise<SavedFile> => {
+                  const res = await fetch(await meshUrl(this.env.FAL_KEY, mesh))
+                  if (!res.ok || !res.body) throw new Error(`part mesh download failed: ${res.status}`)
+                  const key = `scans/${scanId}/hq-${part.id}.glb`
+                  const obj = await this.env.FILES.put(key, res.body, { httpMetadata: { contentType: 'model/gltf-binary' } })
+                  await mark({ name: `HQ ${part.id}`, start: at, end: Date.now(), note: `${obj?.size ? (obj.size / 1e6).toFixed(1) : '?'} MB` })
+                  return { key, url: '', partIds: [part.id], layouts: [], bytes: obj?.size ?? null, source: 'generated', image: imageUrl }
+                }),
+              ),
+          )
+          .then(async (f) => {
+            hqFiles.push(f)
+            await step.do(`hq-files-${part.id}`, () => writeModelFiles(false))
+          })
+          .catch((err) => console.warn(`HQ model for ${part.id} failed; SAM 3D / block stays`, err)),
+      ),
+    )
+
     // 4. Step-writer subagents, one per subassembly, all in parallel. Each is its own durable
     //    step, so a retry only re-runs the group that failed.
     const bestRow = async () => {
@@ -510,7 +560,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
       // Parts the photo can't show: look for a clear product photo and model just that part from it,
       // in parallel with the main jobs. Best effort; without one the part stays a block.
       const submitReferences = async (a: Analysis): Promise<Job3d[]> => {
-        if (!this.env.CLONVO_API_KEY) return []
+        if (!this.env.CLONVO_API_KEY || hqParts.length > 0) return []
         const found = await Promise.all(
           referenceCandidates(a, MAX_REFERENCE_PARTS).map(async (part) => {
             const ref = await timed(
@@ -551,7 +601,8 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
           }),
       ])
       const jobs: Job3d[] = [...mainJobs, ...refJobs]
-      const files: (ModelFile & { key: string })[] = []
+      const files = samFiles
+      samCount.total = jobs.length
       const finished = new Set<number>()
       const failed = new Set<number>()
       let reported = -1
@@ -609,29 +660,27 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
             files.push(f)
           } else failed.add(j)
         }
+        samCount.done = finished.size
 
         // Live progress: parts done so far; the app can load them as they arrive. Written only when
         // it changes, so the app's polls get "not modified" in between.
         if (finished.size + failed.size === reported) continue
         reported = finished.size + failed.size
-        await step.do(`progress-3d-${i}`, async () => {
-          const p: ScanProgress = { fal: { done: finished.size, total: jobs.length } }
-          await setFields({
-            progress: JSON.stringify(p),
-            model_files: files.length ? JSON.stringify(files) : null,
-            model_bytes: files.reduce((n, f) => n + (f.bytes ?? 0), 0) || null,
-          })
-        })
+        await step.do(`progress-3d-${i}`, () => writeModelFiles(true))
       }
+
+      // High-quality parts still in flight: the scan is done when they are (each streams in on its own).
+      await hqDone
+      await step.do('hq-final-files', () => writeModelFiles(true))
 
       await step.do('finish-3d', async () => {
         const mainFailed = [...failed].filter((j) => !jobs[j].reference).length
-        if (!files.some((f) => !f.source)) throw new NonRetryableError(failed.size ? 'every 3D job failed' : '3D generation timed out after 10 minutes')
+        if (!files.some((f) => !f.source) && hqFiles.length === 0) throw new NonRetryableError(failed.size ? 'every 3D job failed' : '3D generation timed out after 10 minutes')
         await setFields({
           stage: 'done',
           model_error: mainFailed ? `${mainFailed} of ${mainJobs.length} parts couldn't be scanned in 3D; they show as blocks.` : null,
         })
-        await mark({ name: 'model ready', start: createdAt, end: Date.now(), note: `${files.length}/${jobs.length} parts` })
+        await mark({ name: 'model ready', start: createdAt, end: Date.now(), note: `${files.length}/${jobs.length} scanned, ${hqFiles.length}/${hqParts.length} high-quality` })
       })
       await translated
       await sendTrace(true, 'done')

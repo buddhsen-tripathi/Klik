@@ -104,3 +104,20 @@ export async function getFalStatus(apiKey: string, job: FalJob): Promise<FalStat
 export async function getFalResult(apiKey: string, job: FalJob): Promise<Sam3dResult> {
   return falFetch(apiKey, job.responseUrl)
 }
+
+/** Submit any fal queue job. */
+export async function submitFalJob(apiKey: string, endpoint: string, input: unknown): Promise<FalJob> {
+  const data = await falFetch(apiKey, `https://queue.fal.run/${endpoint}`, { method: 'POST', body: JSON.stringify(input) })
+  return { requestId: data.request_id, statusUrl: data.status_url, responseUrl: data.response_url }
+}
+
+/** Wait for a fal job (polling its status) and return its result. */
+export async function waitFalJob<T = any>(apiKey: string, job: FalJob, timeoutMs: number, everyMs = 1500): Promise<T> {
+  const until = Date.now() + timeoutMs
+  for (;;) {
+    const s = await getFalStatus(apiKey, job).catch(() => null)
+    if (s?.status === 'COMPLETED') return falFetch(apiKey, job.responseUrl) as Promise<T>
+    if (Date.now() > until) throw new Error(`fal job timed out after ${Math.round(timeoutMs / 1000)}s`)
+    await new Promise((r) => setTimeout(r, everyMs))
+  }
+}

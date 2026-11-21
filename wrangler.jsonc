@@ -44,6 +44,9 @@
     "STEPS_MODEL": "gemini-4-neon",
     // Parallel SAM 3D jobs per scan (one per part, $0.02 each). SAM 3D takes ~25 s per box, so one job per part is fastest.
     "MAX_3D_JOBS": "10",
+    // High-quality part models (Nano Banana Pro → Trellis 2, ~$0.45 each, ~60 s, in parallel), hidden parts
+    // included. They replace SAM 3D's rough mesh part by part as they stream in. 0 turns them off.
+    "MAX_HQ_PARTS": "10",
     // Fast model (hydrogen) for quick, frequent or cosmetic calls: live camera naming, identify, reference images, translation.
     "IDENTIFY_MODEL": "gemini-4-hydrogen",
     // Voice agent (Gemini Live, audio in and out, tool calls). Browser connects directly with an ephemeral token.

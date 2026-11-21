@@ -191,8 +191,10 @@ export interface ModelFile {
    * product photo found online. Only ever used for parts with no scan; scale it uniformly to the
    * part's size and keep its own shape.
    */
-  source?: 'photo' | 'reference'
+  source?: 'photo' | 'reference' | 'generated'
   reference?: { imageUrl: string; pageUrl: string; title: string }
+  /** 'generated': the clean part image the high-quality mesh was built from. */
+  image?: string
 }
 
 export interface Timing {
