@@ -280,4 +280,7 @@ export interface ShopProduct {
   image: string | null
   available: boolean
   rating: { value: number; count: number | null } | null
+  /** For checkout: the exact variant and the seller's storefront domain (null: product page only). */
+  variantId?: string | null
+  shop?: string | null
 }

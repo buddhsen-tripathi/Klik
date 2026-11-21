@@ -56,3 +56,28 @@
   background: color-mix(in srgb, var(--destructive) 12%, transparent);
   font-size: 0.85rem;
 }
+
+/* Buy: straight to Shop's checkout. */
+.shop-buy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.shop-list a[aria-busy='true'] {
+  opacity: 0.75;
+}
+.shop-price:has(.shop-buy) {
+  flex-direction: column;
+  align-items: flex-end;
+}
+.shop-buy .lucide {
+  color: inherit;
+}

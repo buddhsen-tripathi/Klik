@@ -1,13 +1,10 @@
-import { ExternalLink, ShoppingBag } from 'lucide-react'
+import { ShoppingBag } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { searchShop, type ShopResult } from '../../api'
-import { money } from './money'
+import ShopItem from './ShopItem'
 import { closeShop, useShopQuery } from './shopStore'
 import './shop.css'
 import { useT } from '../../i18n/useT'
-
-/** Shopify CDN images resize by query param; a small one is plenty for a row. */
-const thumb = (url: string) => (url.includes('cdn.shopify.com') ? `${url}${url.includes('?') ? '&' : '?'}width=160` : url)
 
 /** Products from Shop for a tool or a replacement part. Opened with openShop(). */
 export default function ShopSheet() {
@@ -43,19 +40,7 @@ export default function ShopSheet() {
         <ul className="shop-list">
           {ready?.result?.products.map((p) => (
             <li key={p.url}>
-              <a href={p.url} target="_blank" rel="noreferrer">
-                {p.image ? <img src={thumb(p.image)} alt="" loading="lazy" /> : <span className="shop-noimg" />}
-                <span className="shop-info">
-                  <strong>{p.title}</strong>
-                  <span className="muted small">
-                    {[p.seller, p.rating && `★ ${p.rating.value.toFixed(1)}`, !p.available && 'Out of stock'].filter(Boolean).join(' · ')}
-                  </span>
-                </span>
-                <span className="shop-price">
-                  {p.price && money(p.price)}
-                  <ExternalLink aria-hidden />
-                </span>
-              </a>
+              <ShopItem p={p} />
             </li>
           ))}
         </ul>

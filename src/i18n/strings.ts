@@ -46,6 +46,8 @@ const en = {
   updated: 'Updated from feedback',
   translating: 'Translating…',
   language: 'Language',
+  buy: 'Buy',
+  openingCheckout: 'Opening checkout…',
   show3d: 'Show 3D',
   showCamera: 'Show camera',
   startingCamera: 'Starting camera…',
@@ -71,6 +73,7 @@ const es: typeof en = {
   partCount: '{n} piezas', loadingModel: 'Cargando el modelo 3D…', somethingOff: '¿Algo no va bien?', checkPhoto: 'Revisar con una foto',
   updated: 'Actualizado por comentarios', translating: 'Traduciendo…', language: 'Idioma',
   show3d: 'Ver 3D', showCamera: 'Ver cámara', startingCamera: 'Iniciando cámara…', cameraBlocked: 'Cámara bloqueada', pressStart: 'Pulsa Empezar', watchingStep: 'Observando el paso {n}…', pointCamera: 'Apunta la cámara al objeto', looksDone: 'Paso {n}: parece hecho', notDoneYet: 'Paso {n}: aún no', allDone: 'Todos los pasos hechos', endCoach: 'Terminar asistente en vivo',
+ buy: 'Comprar', openingCheckout: 'Abriendo el pago…',
 }
 const fr: typeof en = {
   start: 'Commencer', next: 'Suivant', done: 'Terminé', back: 'Retour', writingSteps: 'Rédaction des étapes…', noSteps: 'Aucune étape',
@@ -83,6 +86,7 @@ const fr: typeof en = {
   partCount: '{n} pièces', loadingModel: 'Chargement du modèle 3D…', somethingOff: 'Un souci ?', checkPhoto: 'Vérifier avec une photo',
   updated: 'Mis à jour selon les retours', translating: 'Traduction…', language: 'Langue',
   show3d: 'Voir la 3D', showCamera: 'Voir la caméra', startingCamera: 'Démarrage de la caméra…', cameraBlocked: 'Caméra bloquée', pressStart: 'Appuyez sur Commencer', watchingStep: 'Observation de l’étape {n}…', pointCamera: 'Visez l’objet avec la caméra', looksDone: 'Étape {n} : semble faite', notDoneYet: 'Étape {n} : pas encore', allDone: 'Toutes les étapes sont faites', endCoach: 'Arrêter le coach en direct',
+ buy: 'Acheter', openingCheckout: 'Ouverture du paiement…',
 }
 const de: typeof en = {
   start: 'Los geht’s', next: 'Weiter', done: 'Fertig', back: 'Zurück', writingSteps: 'Schritte werden geschrieben…', noSteps: 'Keine Schritte',
@@ -95,6 +99,7 @@ const de: typeof en = {
   partCount: '{n} Teile', loadingModel: '3D-Modell wird geladen…', somethingOff: 'Stimmt etwas nicht?', checkPhoto: 'Mit Foto prüfen',
   updated: 'Nach Rückmeldungen aktualisiert', translating: 'Wird übersetzt…', language: 'Sprache',
   show3d: '3D zeigen', showCamera: 'Kamera zeigen', startingCamera: 'Kamera startet…', cameraBlocked: 'Kamera blockiert', pressStart: 'Tippe auf Los geht’s', watchingStep: 'Beobachte Schritt {n}…', pointCamera: 'Kamera auf das Objekt richten', looksDone: 'Schritt {n}: sieht fertig aus', notDoneYet: 'Schritt {n}: noch nicht fertig', allDone: 'Alle Schritte erledigt', endCoach: 'Live-Coach beenden',
+ buy: 'Kaufen', openingCheckout: 'Kasse wird geöffnet…',
 }
 const pt: typeof en = {
   start: 'Começar', next: 'Próximo', done: 'Concluído', back: 'Voltar', writingSteps: 'Escrevendo os passos…', noSteps: 'Sem passos',
@@ -107,6 +112,7 @@ const pt: typeof en = {
   partCount: '{n} peças', loadingModel: 'Carregando o modelo 3D…', somethingOff: 'Algo errado?', checkPhoto: 'Verificar com uma foto',
   updated: 'Atualizado com feedback', translating: 'Traduzindo…', language: 'Idioma',
   show3d: 'Ver 3D', showCamera: 'Ver câmera', startingCamera: 'Iniciando a câmera…', cameraBlocked: 'Câmera bloqueada', pressStart: 'Toque em Começar', watchingStep: 'Observando o passo {n}…', pointCamera: 'Aponte a câmera para o objeto', looksDone: 'Passo {n}: parece feito', notDoneYet: 'Passo {n}: ainda não', allDone: 'Todos os passos feitos', endCoach: 'Encerrar coach ao vivo',
+ buy: 'Comprar', openingCheckout: 'Abrindo o checkout…',
 }
 const hi: typeof en = {
   start: 'शुरू करें', next: 'आगे', done: 'हो गया', back: 'पीछे', writingSteps: 'स्टेप लिखे जा रहे हैं…', noSteps: 'कोई स्टेप नहीं',
@@ -119,6 +125,7 @@ const hi: typeof en = {
   partCount: '{n} पुर्ज़े', loadingModel: '3D मॉडल लोड हो रहा है…', somethingOff: 'कुछ गड़बड़?', checkPhoto: 'फ़ोटो से जाँचें',
   updated: 'फ़ीडबैक से अपडेट किया गया', translating: 'अनुवाद हो रहा है…', language: 'भाषा',
   show3d: '3D दिखाएँ', showCamera: 'कैमरा दिखाएँ', startingCamera: 'कैमरा शुरू हो रहा है…', cameraBlocked: 'कैमरा ब्लॉक है', pressStart: 'शुरू करें दबाएँ', watchingStep: 'स्टेप {n} देख रहे हैं…', pointCamera: 'कैमरा चीज़ की ओर करें', looksDone: 'स्टेप {n}: हो गया लगता है', notDoneYet: 'स्टेप {n}: अभी नहीं', allDone: 'सभी स्टेप पूरे', endCoach: 'लाइव कोच बंद करें',
+ buy: 'खरीदें', openingCheckout: 'चेकआउट खुल रहा है…',
 }
 const ja: typeof en = {
   start: '開始', next: '次へ', done: '完了', back: '戻る', writingSteps: '手順を作成中…', noSteps: '手順なし',
@@ -131,6 +138,7 @@ const ja: typeof en = {
   partCount: '部品 {n} 個', loadingModel: '3Dモデルを読み込み中…', somethingOff: 'うまくいかない？', checkPhoto: '写真で確認',
   updated: 'フィードバックで更新', translating: '翻訳中…', language: '言語',
   show3d: '3Dを表示', showCamera: 'カメラを表示', startingCamera: 'カメラを起動中…', cameraBlocked: 'カメラがブロックされています', pressStart: '開始を押してください', watchingStep: '手順 {n} を確認中…', pointCamera: 'カメラを対象に向けてください', looksDone: '手順 {n}：完了のようです', notDoneYet: '手順 {n}：まだです', allDone: 'すべての手順が完了', endCoach: 'ライブコーチを終了',
+ buy: '購入', openingCheckout: 'チェックアウトを開いています…',
 }
 const zh: typeof en = {
   start: '开始', next: '下一步', done: '完成', back: '返回', writingSteps: '正在编写步骤…', noSteps: '没有步骤',
@@ -143,6 +151,7 @@ const zh: typeof en = {
   partCount: '{n} 个零件', loadingModel: '正在加载 3D 模型…', somethingOff: '有问题？', checkPhoto: '拍照检查',
   updated: '已根据反馈更新', translating: '正在翻译…', language: '语言',
   show3d: '查看 3D', showCamera: '查看摄像头', startingCamera: '正在启动摄像头…', cameraBlocked: '摄像头被阻止', pressStart: '请点击开始', watchingStep: '正在观察第 {n} 步…', pointCamera: '请将摄像头对准物体', looksDone: '第 {n} 步：看起来完成了', notDoneYet: '第 {n} 步：尚未完成', allDone: '所有步骤已完成', endCoach: '结束实时指导',
+ buy: '购买', openingCheckout: '正在打开结账页面…',
 }
 
 const STRINGS: Record<Lang, typeof en> = { en, es, fr, de, pt, hi, ja, zh }

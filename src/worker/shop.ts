@@ -16,11 +16,8 @@ export interface ShopResult {
   warnings: string[]
 }
 
-export async function searchShop(query: string, country: string | null, limit = 4): Promise<ShopResult> {
-  const key = `${country ?? ''}|${limit}|${query.toLowerCase()}`
-  const hit = cache.get(key)
-  if (hit && Date.now() - hit.at < TTL) return hit.result
-
+/** One Shop MCP tool call; returns its structured result. */
+async function callShop(name: string, args: unknown): Promise<any> {
   const res = await fetch(ENDPOINT, {
     method: 'POST',
     headers: {
@@ -28,15 +25,15 @@ export async function searchShop(query: string, country: string | null, limit = 
       accept: 'application/json, text/event-stream',
       'mcp-protocol-version': VERSION,
       'mcp-method': 'tools/call',
-      'mcp-name': 'search_catalog',
+      'mcp-name': name,
     },
     body: JSON.stringify({
       jsonrpc: '2.0',
       id: 1,
       method: 'tools/call',
       params: {
-        name: 'search_catalog',
-        arguments: { catalog: { query, context: country ? { address_country: country } : {}, pagination: { limit } } },
+        name,
+        arguments: args,
         _meta: {
           'io.modelcontextprotocol/protocolVersion': VERSION,
           'io.modelcontextprotocol/clientInfo': { name: 'repair-guide', version: '1.0.0' },
@@ -47,9 +44,17 @@ export async function searchShop(query: string, country: string | null, limit = 
     signal: AbortSignal.timeout(12_000),
   })
   const body = (await res.json().catch(() => null)) as any
-  if (!res.ok || body?.error) throw new Error(body?.error?.message ?? `Shop search failed (${res.status})`)
-  if (body?.result?.isError) throw new Error('Shop search failed')
-  const doc = body?.result?.structuredContent ?? {}
+  if (!res.ok || body?.error) throw new Error(body?.error?.message ?? `Shop ${name} failed (${res.status})`)
+  if (body?.result?.isError) throw new Error(`Shop ${name} failed`)
+  return body?.result?.structuredContent ?? {}
+}
+
+export async function searchShop(query: string, country: string | null, limit = 4): Promise<ShopResult> {
+  const key = `${country ?? ''}|${limit}|${query.toLowerCase()}`
+  const hit = cache.get(key)
+  if (hit && Date.now() - hit.at < TTL) return hit.result
+
+  const doc = await callShop('search_catalog', { catalog: { query, context: country ? { address_country: country } : {}, pagination: { limit } } })
   const result: ShopResult = {
     products: (Array.isArray(doc.products) ? doc.products : []).flatMap((p: any): ShopProduct[] => {
       const v = p?.variants?.[0]
@@ -66,6 +71,9 @@ export async function searchShop(query: string, country: string | null, limit = 
           image: typeof image === 'string' ? image : null,
           available: v.availability?.available !== false,
           rating: typeof rating?.value === 'number' ? { value: rating.value, count: rating.count ?? null } : null,
+          // What checkout needs: the exact variant ID and the seller's storefront domain.
+          variantId: typeof v.id === 'string' ? v.id : null,
+          shop: typeof v.seller?.domain === 'string' ? v.seller.domain : null,
         },
       ]
     }),
@@ -74,4 +82,27 @@ export async function searchShop(query: string, country: string | null, limit = 
   if (cache.size > 300) cache.clear()
   cache.set(key, { at: Date.now(), result })
   return result
+}
+
+const checkouts = new Map<string, { at: number; url: string }>()
+
+/**
+ * A Shop checkout for one item, created when the buyer taps Buy. Returns Shop's "Review and pay"
+ * page (continue_url, passed on unchanged), where they add contact, address and payment.
+ * Creates no order. The same item within 10 minutes reuses its checkout instead of making another.
+ */
+export async function createCheckout(shop: string, variantId: string, country: string | null): Promise<string> {
+  const key = `${shop}|${variantId}|${country ?? ''}`
+  const hit = checkouts.get(key)
+  if (hit && Date.now() - hit.at < TTL) return hit.url
+  const doc = await callShop('create_checkout', {
+    shop,
+    checkout: { line_items: [{ item: { id: variantId }, quantity: 1 }], ...(country ? { context: { address_country: country } } : {}) },
+    meta: { 'idempotency-key': crypto.randomUUID() },
+  })
+  const url = typeof doc.continue_url === 'string' ? doc.continue_url : null
+  if (!url || !url.startsWith('https://')) throw new Error('Shop returned no checkout link')
+  if (checkouts.size > 300) checkouts.clear()
+  checkouts.set(key, { at: Date.now(), url })
+  return url
 }

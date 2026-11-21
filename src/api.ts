@@ -113,6 +113,12 @@ export interface ShopResult {
 export const searchShop = (query: string, signal?: AbortSignal) =>
   fetch(`/api/shop?q=${encodeURIComponent(query)}`, { signal }).then((r) => json<ShopResult>(r))
 
+/** Shop's "Review and pay" page for one product. */
+export const startCheckout = (shop: string, variantId: string) =>
+  fetch('/api/shop/checkout', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ shop, variantId }) }).then((r) =>
+    json<{ url: string }>(r),
+  )
+
 /** The guide in another language (translated once per scan and language, then cached). */
 export const getTranslation = (scanId: string, lang: Lang, signal?: AbortSignal) =>
   fetch(`/api/scans/${scanId}/translation?lang=${lang}`, { signal }).then((r) => json<GuideTranslation>(r))
