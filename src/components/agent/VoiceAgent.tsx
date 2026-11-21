@@ -15,7 +15,7 @@ const STATUS: Record<Agent['status'], string> = {
  * Floating voice helper: tap the orb and talk ("next", "which screw is this?", "I think I
  * messed up the wheels"). Live captions show what it heard and what it says.
  */
-export default function VoiceAgent({ agent }: { agent: Agent }) {
+export default function VoiceAgent({ agent, coach = false, onEnd }: { agent: Agent; coach?: boolean; onEnd?: () => void }) {
   const orb = useRef<HTMLButtonElement>(null)
   const [typed, setTyped] = useState('')
   const captions = useRef<HTMLDivElement>(null)
@@ -59,11 +59,16 @@ export default function VoiceAgent({ agent }: { agent: Agent }) {
           <span />
         </button>
         <div className="agent-status">
-          <strong>{STATUS[agent.status]}</strong>
+          <strong>
+            {coach && <span className="agent-live">LIVE</span>}
+            {coach && agent.status === 'listening' ? 'Watching' : STATUS[agent.status]}
+          </strong>
           {agent.activity && <small>{agent.activity}</small>}
-          {!agent.activity && agent.status === 'listening' && <small>Try “next”, “which screw?” or “I think I got step 3 wrong”</small>}
+          {!agent.activity && agent.status === 'listening' && (
+            <small>{coach ? 'Just work. I’ll speak up if something’s off. Ask me anything.' : 'Try “next”, “which screw?” or “I think I got step 3 wrong”'}</small>
+          )}
         </div>
-        <button className="btn ghost small" onClick={agent.stop}>
+        <button className="btn ghost small" onClick={onEnd ?? agent.stop}>
           End
         </button>
       </div>

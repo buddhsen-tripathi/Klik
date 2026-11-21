@@ -36,3 +36,6 @@
 @media (min-width: 900px) {
   .agent-fab, .agent-panel { right: calc(400px + 16px); }
 }
+.agent-live { display: inline-block; margin-right: 6px; padding: 1px 6px; border-radius: 6px; font-size: 10px; letter-spacing: 0.06em; vertical-align: 2px;
+  background: #e03131; color: #fff; animation: agent-live 1.6s ease-in-out infinite; }
+@keyframes agent-live { 50% { opacity: 0.55; } }

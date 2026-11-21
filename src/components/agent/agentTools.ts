@@ -13,7 +13,8 @@ export interface AgentSnapshot {
   /** Active fix plan from "check my progress", if any. */
   recovery: Recovery | null
   hasScan: boolean
-  watching: boolean
+  /** Live coach: the camera is on and its frames stream to the agent. */
+  coach: boolean
 }
 
 /** What the agent can do in the app. */
@@ -23,8 +24,10 @@ export interface AgentActions {
   selectPart(id: string | null): void
   setView(v: 'scan' | 'blockout'): void
   setSpin(on: boolean): void
-  setWatching(on: boolean): void
+  setCoach(on: boolean): void
   openProgressCheck(note: string | null): void
+  /** Live coach: re-plan from the current camera frame (null if there's no frame yet). */
+  replanFromCamera(note: string | null): Promise<Recovery | null>
   startPlan(): void
   clearPlan(): void
   newScan(): void
@@ -55,14 +58,15 @@ export const TOOLS: FunctionDeclaration[] = [
     parameters: { type: 'OBJECT', properties: { view: { type: 'STRING', enum: ['scan', 'blockout'] }, spin: { type: 'BOOLEAN' } } },
   },
   {
-    name: 'hands_free',
-    description: 'Turn hands-free mode on/off: the camera watches and moves to the next step when the current one is done.',
+    name: 'live_coach',
+    description:
+      'Turn live coach on/off: the camera opens, you see what they are doing, and the app moves to the next step when the camera sees the current one done.',
     parameters: { type: 'OBJECT', properties: { on: { type: 'BOOLEAN' } }, required: ['on'] },
   },
   {
     name: 'check_progress',
     description:
-      'When the user is unsure, thinks they made a mistake, has leftover parts, or wants to restart from where they are: open the camera so they can photograph their build. The result (what is done, mistakes, fix steps) arrives later as an [App] message.',
+      'When the user is unsure, thinks they made a mistake, has leftover parts, or wants to restart from where they are: re-plan from what the camera sees. With live coach on it uses the camera right away and returns what is done, the mistakes and fix steps; otherwise it opens a photo sheet and the result arrives later as an [App] message.',
     parameters: { type: 'OBJECT', properties: { note: str('What the user said went wrong, in their words') } },
   },
   {
@@ -76,6 +80,11 @@ export const TOOLS: FunctionDeclaration[] = [
     parameters: { type: 'OBJECT', properties: { question: str('A full, specific question including the product name') }, required: ['question'] },
   },
   { name: 'new_scan', description: 'Start scanning a different object (leaves this guide).' },
+  {
+    name: 'stay_quiet',
+    description: 'Live coach check found nothing worth saying: call this instead of speaking.',
+    behavior: 'NON_BLOCKING',
+  },
   { name: 'end_conversation', description: 'The user is done talking (bye, thanks that is all, stop listening).' },
 ]
 
@@ -95,7 +104,7 @@ function stepText(s: AgentSnapshot, i: number): string {
 /** Short state line sent whenever the user changes something on screen. */
 export function describeState(s: AgentSnapshot): string {
   const plan = s.recovery ? ` Following a fix plan (${s.recovery.fixSteps.length} fixes, then the guide from its step ${s.recovery.resumeAt + 1}).` : ''
-  return `[App] Mode: ${s.mode === 'disassemble' ? 'taking apart' : 'putting together'}. Now showing: ${stepText(s, s.stepIndex)}${plan}${s.watching ? ' Hands-free camera is on.' : ''}`
+  return `[App] Mode: ${s.mode === 'disassemble' ? 'taking apart' : 'putting together'}. Now showing: ${stepText(s, s.stepIndex)}${plan}${s.coach ? ' Live coach is ON: you can see their camera.' : ' Camera is off.'}`
 }
 
 /** The agent's briefing: the whole guide plus how to behave. */
@@ -112,6 +121,14 @@ How to talk:
 - Safety first: mention cautions on the step.
 - Only state sizes that are in the guide; otherwise say you're not sure or use search_web.
 - Messages starting with [App] are app events, not the user speaking.
+
+LIVE COACH (when the camera is on you get video frames of their hands and the object):
+- Watch what they actually do and coach in real time, like an expert standing next to them.
+- Warn straight away, in one short sentence with the fix, if you see: the wrong screw/part/tool, forcing or prying something that should come free, wrong order or orientation, a part about to be lost or dropped, or anything unsafe (blades, springs, batteries, power still connected).
+- The app moves to the next step by itself when the camera sees the step done; an [App] message tells you, then say the next step in a sentence.
+- "[App] Coach check" messages are periodic: if nothing needs saying, call stay_quiet and say nothing. Never say "looks good" just to fill silence.
+- Only describe what is in the frames you actually received. If you have no frames yet, or the object is out of frame or blurry, say you can't see it yet and ask them to point the camera at it. Never guess what they are holding.
+- If they made a mistake that needs re-planning, call check_progress with what you saw as the note.
 
 THE OBJECT: ${a.objectName}. ${a.summary}
 Size: ${a.dimensions.join(' x ')} cm (${a.dimensionsSource === 'docs' ? 'from the manufacturer' : 'estimated'}). Difficulty: ${a.difficulty}, about ${a.estimatedMinutes} min.
@@ -177,12 +194,27 @@ export async function runTool(name: string, args: Record<string, unknown>, s: Ag
       if (args.view === 'scan' || args.view === 'blockout') act.setView(args.view)
       if (typeof args.spin === 'boolean') act.setSpin(args.spin)
       return { ok: true }
-    case 'hands_free':
-      act.setWatching(Boolean(args.on))
+    case 'live_coach':
+      act.setCoach(Boolean(args.on))
       return { ok: true, note: args.on ? 'Camera opens; the user may need to tap Allow camera.' : 'Camera off.' }
-    case 'check_progress':
-      act.openProgressCheck(typeof args.note === 'string' && args.note.trim() ? args.note : null)
-      return { ok: true, note: 'Camera sheet is open. Ask them to take a photo of the whole build. The result will arrive as an [App] message.' }
+    case 'check_progress': {
+      const note = typeof args.note === 'string' && args.note.trim() ? args.note : null
+      if (s.coach) {
+        const r = await act.replanFromCamera(note)
+        if (r)
+          return {
+            ok: true,
+            summary: r.summary,
+            mistakes: r.mistakes.map((m) => `${m.stepIndex != null ? `step ${m.stepIndex + 1}: ` : ''}${m.problem} (fix: ${m.fix})`),
+            plan: `${r.fixSteps.length} fix step(s), then the guide from step ${r.resumeAt + 1}`,
+            next: 'Tell them in a sentence and offer to start the fix plan (fix_plan start).',
+          }
+      }
+      act.openProgressCheck(note)
+      return { ok: true, note: 'Photo sheet is open. Ask them to take a photo of the whole build. The result will arrive as an [App] message.' }
+    }
+    case 'stay_quiet':
+      return { ok: true, scheduling: 'SILENT' }
     case 'fix_plan':
       if (!s.recovery) return { ok: false, error: 'No progress check yet. Use check_progress first.' }
       if (args.action === 'cancel') {

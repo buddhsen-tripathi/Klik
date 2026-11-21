@@ -22,6 +22,8 @@ export default function LiveCheck({
   stepCount,
   onAdvance,
   onClose,
+  onFrame,
+  stopLabel = 'Stop watching',
 }: {
   scanId: string
   /** Following the fix plan from a progress check (step numbers refer to it). */
@@ -31,13 +33,16 @@ export default function LiveCheck({
   stepCount: number
   onAdvance: () => void
   onClose: () => void
+  /** Every frame that gets checked (live coach streams these to the voice agent). */
+  onFrame?: (jpeg: Blob) => void
+  stopLabel?: string
 }) {
   const { videoRef, status, request } = useCamera()
   const [result, setResult] = useState<{ done: number; inView: number } | null>(null)
   const [finished, setFinished] = useState(false)
   const loop = useRef({ busy: false, hits: 0, quietUntil: 0 })
-  const latest = useRef({ stepIndex, stepCount, onAdvance })
-  latest.current = { stepIndex, stepCount, onAdvance }
+  const latest = useRef({ stepIndex, stepCount, onAdvance, onFrame })
+  latest.current = { stepIndex, stepCount, onAdvance, onFrame }
 
   // New step: start counting again.
   useEffect(() => {
@@ -57,6 +62,7 @@ export default function LiveCheck({
       l.busy = true
       try {
         const shot = await toJpeg(v, 640, 0.7)
+        latest.current.onFrame?.(shot.blob)
         const r = await checkStep(scanId, shot.blob, i, mode, ctrl.signal, plan)
         if (latest.current.stepIndex !== i) return // user moved on meanwhile
         setResult(r)
@@ -111,7 +117,7 @@ export default function LiveCheck({
           </div>
         )}
         <button className="link-btn" onClick={onClose}>
-          Stop watching
+          {stopLabel}
         </button>
       </div>
     </div>

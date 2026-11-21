@@ -55,12 +55,12 @@ export default function ViewerToolbar(props: {
           <button
             className={`btn small bar-btn ${watching ? 'primary' : 'ghost'}`}
             aria-pressed={watching}
-            aria-label="Watch (hands-free)"
-            title="Watch: the camera checks each step and moves on when it's done"
+            aria-label="Live coach"
+            title="Live coach: the camera watches, talks you through each step and warns you when something's off"
             onClick={props.onWatch}
           >
-            <span aria-hidden>📷</span>
-            <span className="bar-label">Watch</span>
+            <span aria-hidden>🎥</span>
+            <span className="bar-label">{watching ? 'Live' : 'Live coach'}</span>
           </button>
         )}
       </div>

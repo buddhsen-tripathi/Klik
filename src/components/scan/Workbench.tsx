@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { clearRecovery } from '../../api'
+import { checkProgress, clearRecovery } from '../../api'
 import { orderedSteps, partStates, planStates, type Mode } from '../../explode'
 import { planSteps } from '../../shared/plan'
 import type { Analysis, Recovery, ScanView } from '../../shared/types'
@@ -11,24 +11,31 @@ import StepsPanel from '../steps/StepsPanel'
 import Viewer3D, { type SizeCheck, type Source } from '../viewer/Viewer3D'
 import LiveStatus from './LiveStatus'
 import PhotoWithBoxes from './PhotoWithBoxes'
+import ScanFailedChip from './ScanFailedChip'
 import SizeCheckChip from './SizeCheckChip'
 import ViewerToolbar from './ViewerToolbar'
 
-// Camera code only loads when someone turns on hands-free mode or checks their progress.
+// Camera code only loads when someone turns on the live coach or checks a photo.
 const LiveCheck = lazy(() => import('../camera/LiveCheck'))
 const ProgressCheckSheet = lazy(() => import('../recovery/ProgressCheckSheet'))
+
+/** Scans up to this size show straight away; bigger ones wait for a tap. */
+const AUTO_LOAD_BYTES = 25e6
+const saveData = () => Boolean((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData)
 
 /** The guide: 3D view + steps, the fix plan after a progress check, and the voice helper. */
 export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; analysis: Analysis; onScan: (s: ScanView) => void }) {
   // Photographed loose parts / a kit → start in "Put together" (the user can switch).
   const [mode, setMode] = useState<Mode>(() => (analysis.triage?.state === 'loose_parts' ? 'assemble' : 'disassemble'))
   const [stepIndex, setStepIndex] = useState(-1)
-  // The scanned GLBs can be tens of MB, so they're only loaded when the user asks.
-  const [source, setSource] = useState<Source>('blockout')
   const [orient, setOrient] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [spin, setSpin] = useState(false)
-  const [watching, setWatching] = useState(false)
+  // Live coach: camera on, frames go to the voice agent, steps advance when the camera sees them done.
+  const [coach, setCoach] = useState(false)
+  const lastFrame = useRef<Blob | null>(null)
+  const [scanFailed, setScanFailed] = useState(false)
+  const [retryKey, setRetryKey] = useState(0)
   const [sizeCheck, setSizeCheck] = useState<SizeCheck | null>(null)
   const [checking, setChecking] = useState<{ note: string } | null>(null)
 
@@ -42,6 +49,10 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
   )
   const canWatch = steps.length > 0 && scan.stage !== 'analyzing'
   const hasScan = scan.modelFiles.length > 0
+  // Show the real scan (texture and shape) as soon as it exists, unless it's huge or the user picked boxes.
+  const [sourceChoice, setSource] = useState<Source | null>(null)
+  const autoScan = hasScan && (scan.modelBytes ?? 0) <= AUTO_LOAD_BYTES && !saveData()
+  const source: Source = sourceChoice ?? (autoScan ? 'scan' : 'blockout')
 
   const changeMode = (m: Mode) => {
     setMode(m)
@@ -54,22 +65,28 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
   }
 
   // ---- voice helper ----
-  const snapshot = (): AgentSnapshot => ({ analysis, steps, stepIndex, mode, recovery, hasScan, watching })
+  const snapshot = (): AgentSnapshot => ({ analysis, steps, stepIndex, mode, recovery, hasScan, coach })
   const actions: AgentActions = {
     goToStep: setStepIndex,
     setMode: changeMode,
     selectPart: setSelectedId,
     setView: (v) => setSource(v === 'scan' && hasScan ? 'scan' : 'blockout'),
     setSpin,
-    setWatching: (on) => {
-      setWatching(on && canWatch)
+    setCoach: (on) => {
+      setCoach(on && canWatch)
       if (on && stepIndex < 0) setStepIndex(0)
     },
     openProgressCheck: (note) => setChecking({ note: note ?? '' }),
+    replanFromCamera: async (note) => {
+      if (!lastFrame.current) return null
+      const r = await checkProgress(scan.id, lastFrame.current, mode, note)
+      applyRecovery(r)
+      return r
+    },
     startPlan: () => setStepIndex(0),
     clearPlan,
     newScan: () => (location.hash = '#/'),
-    end: () => agent.stop(),
+    end: () => endAgent(),
   }
   const agent = useVoiceAgent(snapshot, actions)
 
@@ -81,13 +98,43 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
     const t = setTimeout(() => agent.notify(describeState(snapRef.current())), 400)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stepIndex, mode, recovery?.createdAt, watching, agent.active])
+  }, [stepIndex, mode, recovery?.createdAt, coach, agent.active])
 
-  const onRecovery = (r: Recovery) => {
-    setChecking(null)
+  /** From a tap (iOS needs one for the mic, speaker and camera). */
+  const startCoach = () => {
+    setCoach(true)
+    if (stepIndex < 0) setStepIndex(0)
+    const hello = 'Live coach just started: the camera is on and you can see their frames. In a few words, say you are watching and what the current step is.'
+    if (agent.active) agent.notify(`[App] ${hello}`, true)
+    else void agent.start(hello)
+  }
+  const stopCoach = () => {
+    setCoach(false)
+    agent.notify('[App] Live coach off: the camera is closed.')
+  }
+  const endAgent = () => {
+    agent.stop()
+    setCoach(false)
+  }
+
+  // Camera saw the step done: move on, and have the coach say what's next.
+  const advance = () => {
+    const i = snapRef.current().stepIndex
+    if (i >= steps.length - 1) return
+    setStepIndex(i + 1)
+    const next = steps[i + 1]
+    if (coach && agent.active && next)
+      agent.notify(`[App] The camera saw step ${i + 1} done; the app moved to step ${i + 2}: ${next.title}. Tell them what to do now in a sentence.`, true)
+  }
+
+  const applyRecovery = (r: Recovery) => {
     onScan({ ...scan, recovery: r })
     if (r.mode !== mode) setMode(r.mode)
     setStepIndex(-1)
+  }
+  const onRecovery = (r: Recovery) => {
+    setChecking(null)
+    applyRecovery(r)
     const mistakes = r.mistakes.map((m) => `${m.stepIndex != null ? `step ${m.stepIndex + 1}: ` : ''}${m.problem} (fix: ${m.fix})`).join('; ')
     agent.notify(
       `[App] Progress check result: ${r.summary} ${mistakes ? `Mistakes: ${mistakes}.` : 'No mistakes found.'} Plan: ${r.fixSteps.length} fix step(s), then the guide from step ${r.resumeAt + 1}. Tell the user briefly and offer to start the fix plan.`,
@@ -104,12 +151,23 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
           source={source}
           modelFiles={scan.modelFiles}
           onMeasured={setSizeCheck}
+          onScanError={() => setScanFailed(true)}
+          retryKey={retryKey}
           orient={orient}
           spin={spin}
           selectedId={selectedId}
           onSelect={setSelectedId}
         />
-        {source === 'scan' && hasScan && scan.stage === 'done' && sizeCheck && <SizeCheckChip check={sizeCheck} analysis={analysis} />}
+        {source === 'scan' && scanFailed ? (
+          <ScanFailedChip
+            onRetry={() => {
+              setScanFailed(false)
+              setRetryKey((k) => k + 1)
+            }}
+          />
+        ) : (
+          source === 'scan' && hasScan && scan.stage === 'done' && sizeCheck && <SizeCheckChip check={sizeCheck} analysis={analysis} />
+        )}
         <ViewerToolbar
           scan={scan}
           source={source}
@@ -118,13 +176,10 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
           spin={spin}
           onSpin={() => setSpin((v) => !v)}
           canWatch={canWatch}
-          watching={watching}
-          onWatch={() => {
-            setWatching((w) => !w)
-            if (stepIndex < 0) setStepIndex(0)
-          }}
+          watching={coach}
+          onWatch={() => (coach ? stopCoach() : startCoach())}
         />
-        {watching && canWatch && (
+        {coach && canWatch && (
           <Suspense fallback={null}>
             <LiveCheck
               scanId={scan.id}
@@ -132,12 +187,17 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
               mode={mode}
               stepIndex={stepIndex}
               stepCount={steps.length}
-              onAdvance={() => setStepIndex((i) => Math.min(i + 1, steps.length - 1))}
-              onClose={() => setWatching(false)}
+              onAdvance={advance}
+              onClose={stopCoach}
+              onFrame={(jpeg) => {
+                lastFrame.current = jpeg
+                if (agent.active) void agent.sendFrame(jpeg)
+              }}
+              stopLabel="End live coach"
             />
           </Suspense>
         )}
-        {!watching && (scan.stage === 'analyzing' || scan.stage === 'modeling') && <LiveStatus scan={scan} />}
+        {!coach && (scan.stage === 'analyzing' || scan.stage === 'modeling') && <LiveStatus scan={scan} />}
       </section>
 
       <StepsPanel
@@ -157,6 +217,8 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
             <ProgressAssist
               recovery={recovery}
               stepIndex={stepIndex}
+              coach={coach}
+              onCoach={startCoach}
               onCheck={() => setChecking({ note: '' })}
               onStart={() => setStepIndex(0)}
               onClear={clearPlan}
@@ -170,7 +232,7 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
           <ProgressCheckSheet scanId={scan.id} mode={mode} initialNote={checking.note} onDone={onRecovery} onClose={() => setChecking(null)} />
         </Suspense>
       )}
-      {canWatch && <VoiceAgent agent={agent} />}
+      {canWatch && <VoiceAgent agent={agent} coach={coach} onEnd={endAgent} />}
     </main>
   )
 }
