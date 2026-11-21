@@ -1275,3 +1275,63 @@ details.card summary {
 .chip.hardware {
   font-variant-numeric: tabular-nums;
 }
+
+/* Hands-free step check: camera preview over the 3D view. */
+.live-check {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.15);
+}
+
+.live-check video {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #000;
+  flex: none;
+}
+
+.live-check-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  align-items: flex-start;
+}
+
+.live-check-info strong {
+  font-size: 0.92rem;
+}
+
+.meter {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.meter span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+
+.live-check .link-btn {
+  color: var(--muted);
+  padding: 0;
+  font-size: 0.85rem;
+  text-decoration: underline;
+}

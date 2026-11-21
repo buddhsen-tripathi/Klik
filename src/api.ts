@@ -23,6 +23,17 @@ export async function identify(frame: Blob, signal?: AbortSignal): Promise<Ident
   return json<Identification>(res)
 }
 
+/** Live step check (Decisions API): probability the step is done, and that the object is in view. */
+export async function checkStep(scanId: string, frame: Blob, step: number, mode: 'disassemble' | 'assemble', signal?: AbortSignal) {
+  const res = await fetch(`/api/scans/${scanId}/check?step=${step}&mode=${mode}`, {
+    method: 'POST',
+    headers: { 'content-type': frame.type },
+    body: frame,
+    signal,
+  })
+  return json<{ done: number; inView: number }>(res)
+}
+
 export async function createScan(shots: Shot[], hint: string): Promise<string> {
   const form = new FormData()
   shots.forEach((s, i) => {

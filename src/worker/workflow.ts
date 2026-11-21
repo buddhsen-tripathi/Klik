@@ -1,6 +1,7 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers'
 import { NonRetryableError } from 'cloudflare:workflows'
-import type { Analysis, ObjectIdentity, Reference, ScanProgress, Step } from '../shared/types'
+import type { Analysis, ObjectIdentity, Reference, ScanProgress, Step, Triage } from '../shared/types'
+import { triage } from './decisions'
 import { researchObject } from './clonvo'
 import { analyzePhotos, buildReference, identifyObject, writeGroupSteps, type ThinkingLevel } from './gemini'
 import { getFalResult, getFalStatus, submitSam3d, type FalJob } from './fal'
@@ -111,25 +112,44 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
       })
     }
 
-    // 1. Identify: exactly what is it (brand / model), and what to search for.
+    // 1. Identify (Hydrogen: brand / model, what to search for) and, in parallel, triage
+    //    (Decisions API, ~0.5 s: assembled vs loose parts, simple vs complex, manual likely?).
+    // In a step so a replay (e.g. after a restart during 3D polling) doesn't reset the stage.
+    await step.do('start', async () => {
+      await setFields({ stage: 'analyzing', fal_job: null, progress: JSON.stringify(progress) })
+    })
+    const hintRow = await db.prepare('SELECT hint FROM scans WHERE id = ?').bind(scanId).first<{ hint: string | null }>()
+    const hint = hintRow?.hint ?? null
     let identity: ObjectIdentity
+    let triaged: Triage | null
     try {
-      identity = await step.do('identify', { retries: { limit: 2, delay: '3 seconds', backoff: 'exponential' }, timeout: '2 minutes' }, async () => {
-        await setFields({ stage: 'analyzing', fal_job: null, progress: JSON.stringify(progress) })
-        const scan = await db.prepare('SELECT hint FROM scans WHERE id = ?').bind(scanId).first<{ hint: string | null }>()
-        // Fast model: this is mostly reading logos and labels.
-        return identifyObject({ apiKey: this.env.GEMINI_API_KEY, model: this.env.IDENTIFY_MODEL, images: await loadImages(), hint: scan?.hint ?? null })
-      })
+      ;[identity, triaged] = await Promise.all([
+        step.do('identify', { retries: { limit: 2, delay: '3 seconds', backoff: 'exponential' }, timeout: '2 minutes' }, async () =>
+          identifyObject({ apiKey: this.env.GEMINI_API_KEY, model: this.env.IDENTIFY_MODEL, images: await loadImages(), hint }),
+        ),
+        // Routing is a bonus: without it the planner and research just use their defaults.
+        step
+          .do('triage', { retries: { limit: 1, delay: '2 seconds' }, timeout: '1 minute' }, async () =>
+            triage(this.env.GEMINI_API_KEY, await loadImages(), hint),
+          )
+          .catch((err) => {
+            console.warn('triage failed', err)
+            return null
+          }),
+      ])
     } catch (err) {
       return fail(err)
     }
     progress.identity = { objectName: identity.objectName, brand: identity.brand, model: identity.model }
+    progress.triage = triaged
+    // Only spend ~20 s on research when a manual is plausible.
+    const worthResearching = !triaged || triaged.hasDocs >= 0.4 || Boolean(identity.model)
 
     // 2. Research (Clonvo): manual + teardown/parts-list searches and a cited spec question, in
     //    parallel, then condensed into a reference sheet (dimensions, every fastener type, official
     //    order). Optional: without a key, or if nothing is found, the planner works from the photos.
     let reference: Reference | null = null
-    if (this.env.CLONVO_API_KEY) {
+    if (this.env.CLONVO_API_KEY && worthResearching) {
       reference = await step
         .do('research', { retries: { limit: 1, delay: '5 seconds' }, timeout: '3 minutes' }, async () => {
           progress.phase = 'researching'
@@ -158,7 +178,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
         ? { status: 'done', queries: identity.queries, sources: reference.sources, match: reference.match }
         : { status: 'failed', queries: identity.queries, sources: [] }
     } else {
-      progress.research = { status: 'skipped', queries: [], sources: [] }
+      progress.research = { status: this.env.CLONVO_API_KEY ? 'not_needed' : 'skipped', queries: [], sources: [] }
     }
 
     // 3. Planner (main agent), streamed and grounded on the reference sheet: parts (one per
@@ -172,7 +192,6 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
         async () => {
           progress.phase = 'planning'
           await setFields({ fal_job: null, progress: JSON.stringify(progress) })
-          const scan = await db.prepare('SELECT hint FROM scans WHERE id = ?').bind(scanId).first<{ hint: string | null }>()
           const images = await loadImages()
 
           // Save the partial analysis + latest thought ~1x/s so the app can draw parts as they arrive.
@@ -194,8 +213,9 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
             apiKey: this.env.GEMINI_API_KEY,
             model: this.env.GEMINI_MODEL,
             images,
-            hint: scan?.hint && scan.hint !== identity.objectName ? `${identity.objectName} (camera tag: ${scan.hint})` : identity.objectName,
+            hint: hint && hint !== identity.objectName ? `${identity.objectName} (camera tag: ${hint})` : identity.objectName,
             reference,
+            triage: triaged,
             thinkingLevel: thinking,
             onThought: (chunk) => {
               thoughtBuf = (thoughtBuf + chunk).slice(-2000)
@@ -217,6 +237,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
           await writes
 
           analysis.reference = reference
+          analysis.triage = triaged
           analysis.sources = reference?.sources ?? []
           // Official dimensions win for an exact match, whatever the planner wrote.
           if (reference?.match === 'exact' && reference.dimensions) {

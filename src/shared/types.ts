@@ -55,6 +55,16 @@ export interface Reference {
   sources: Source[]
 }
 
+/** Quick routing decisions (Gemini Decisions API) made alongside the identify pass. */
+export interface Triage {
+  /** Probability an official manual / repair guide exists online. */
+  hasDocs: number
+  state: 'assembled' | 'loose_parts' | 'partly_assembled'
+  stateConfidence: number
+  complexity: 'simple' | 'moderate' | 'complex'
+  complexityConfidence: number
+}
+
 /** First pass: exactly what is this, and what to search for. */
 export interface ObjectIdentity {
   objectName: string
@@ -110,6 +120,8 @@ export interface Analysis {
   reference?: Reference | null
   /** Where the overall dimensions came from. */
   dimensionsSource?: 'docs' | 'estimate'
+  /** Routing decisions; state picks the default mode (loose parts → put together). */
+  triage?: Triage | null
   /** Photo (0-based) Gemini picked for the 3D model. Every part's box2d refers to this photo. */
   bestPhotoIndex: number
 }
@@ -156,9 +168,10 @@ export interface ScanProgress {
   phase?: 'identifying' | 'researching' | 'planning' | 'writing'
   /** What we think it is, from the identify pass. */
   identity?: { objectName: string; brand: string | null; model: string | null } | null
+  triage?: Triage | null
   /** Web lookup for manuals/specs (Clonvo). */
   research?: {
-    status: 'searching' | 'reading' | 'done' | 'failed' | 'skipped'
+    status: 'searching' | 'reading' | 'done' | 'failed' | 'skipped' | 'not_needed'
     queries: string[]
     sources: Source[]
     match?: Reference['match']

@@ -1,6 +1,6 @@
 import { NonRetryableError } from 'cloudflare:workflows'
 import { parsePartialJson } from './partial-json'
-import type { Analysis, Group, Identification, ObjectIdentity, Part, Reference, RemovalDirection, Source, Step } from '../shared/types'
+import type { Analysis, Group, Identification, ObjectIdentity, Part, Reference, RemovalDirection, Source, Step, Triage } from '../shared/types'
 
 const API = 'https://generativelanguage.googleapis.com/v1beta/models'
 
@@ -107,7 +107,22 @@ function referenceText(ref: Reference): string {
   return lines.filter(Boolean).join('\n')
 }
 
-function buildPrompt(hint: string | null, photoCount: number, ref: Reference | null): string {
+function triageText(t: Triage | null): string {
+  if (!t) return ''
+  const state = {
+    assembled: 'The photos show the object assembled.',
+    loose_parts: 'The photos show LOOSE PARTS / an unassembled kit: work out the finished object they make, place every part where it ends up in the blockout, and plan from that.',
+    partly_assembled: 'The photos show the object partly assembled: plan the finished object, including the loose parts where they will go.',
+  }[t.state]
+  const groups = {
+    simple: 'Quick check says it is SIMPLE: use exactly ONE group.',
+    moderate: 'Quick check says it is MODERATE: 1 to 3 groups.',
+    complex: 'Quick check says it is COMPLEX: 2 to 5 groups.',
+  }[t.complexity]
+  return `${state}\n${groups}\n`
+}
+
+function buildPrompt(hint: string | null, photoCount: number, ref: Reference | null, triage: Triage | null = null): string {
   const photos =
     photoCount > 1
       ? `You get ${photoCount} photos of the SAME object from different angles (photo 0 first). Use all of them to work out the parts, including ones only visible from some angles.
@@ -115,6 +130,7 @@ Pick bestPhotoIndex = the photo that shows the most parts with the whole object 
       : 'You get one photo. bestPhotoIndex is 0.'
   return `You are a hands-on repair technician. Look at the photos and plan how to take the object apart and put it back together.
 ${hint ? `The user says this is: "${hint}".\n` : ''}${photos}
+${triageText(triage)}
 
 Return JSON matching the schema. Rules:
 
@@ -167,6 +183,7 @@ async function generateJson(opts: {
   text: string
   schema: object
   mediaResolution: 'MEDIA_RESOLUTION_LOW' | 'MEDIA_RESOLUTION_MEDIUM' | 'MEDIA_RESOLUTION_HIGH'
+  thinkingLevel?: ThinkingLevel
 }): Promise<any> {
   const res = await fetch(`${API}/${opts.model}:generateContent`, {
     method: 'POST',
@@ -188,6 +205,7 @@ async function generateJson(opts: {
         responseMimeType: 'application/json',
         responseJsonSchema: opts.schema,
         mediaResolution: opts.mediaResolution,
+        ...(opts.thinkingLevel ? { thinkingConfig: { thinkingLevel: opts.thinkingLevel } } : {}),
       },
     }),
   })
@@ -264,11 +282,16 @@ async function streamText(opts: {
     })
 
   let res = await call(true)
-  // Some models reject thinking settings; fall back to a plain request once.
+  // Models differ in which thinking levels they take (Hydrogen has no MINIMAL): step down to LOW,
+  // then to the model default.
   if (res.status === 400 && opts.thinkingLevel) {
     const err = await geminiError(res.clone())
-    if (/think/i.test(err.message)) res = await call(false)
-    else throw err
+    if (!/think/i.test(err.message)) throw err
+    if (opts.thinkingLevel !== 'LOW') {
+      opts = { ...opts, thinkingLevel: 'LOW' }
+      res = await call(true)
+    }
+    if (res.status === 400) res = await call(false)
   }
   if (!res.ok || !res.body) throw await geminiError(res)
 
@@ -321,6 +344,7 @@ export async function analyzePhotos(opts: {
   images: InlineImage[]
   hint: string | null
   reference: Reference | null
+  triage?: Triage | null
   thinkingLevel: ThinkingLevel | null
   onPartial?: (partial: Analysis, partsFinal: boolean) => void
   onThought?: (chunk: string) => void
@@ -329,7 +353,7 @@ export async function analyzePhotos(opts: {
     apiKey: opts.apiKey,
     model: opts.model,
     images: opts.images,
-    text: buildPrompt(opts.hint, opts.images.length, opts.reference),
+    text: buildPrompt(opts.hint, opts.images.length, opts.reference, opts.triage ?? null),
     schema: ANALYSIS_SCHEMA,
     thinkingLevel: opts.thinkingLevel,
     onThought: (c) => opts.onThought?.(c),
@@ -396,7 +420,7 @@ export async function identifyObject(opts: {
 ${opts.hint ? `The user pointed their camera at it and it was tagged "${opts.hint}"; trust that for what KIND of thing it is (e.g. a toy vs the real thing).\n` : ''}Watch the scale: a toy car, a model kit or a miniature is NOT the real vehicle/building. Name it as what it physically is, and search for THAT (e.g. the diecast model's own disassembly), not the full-size original.
 Then write web searches that would find its manual, a teardown/repair guide listing its screws, and its exact dimensions.`,
     schema: IDENTITY_SCHEMA,
-    thinkingLevel: 'MINIMAL',
+    thinkingLevel: 'LOW',
     onText: () => {},
     onThought: () => {},
   })
@@ -610,6 +634,8 @@ export async function identifyFrame(opts: { apiKey: string; model: string; image
     text: 'This is a live camera frame from someone who wants to scan an object to take it apart or assemble it. Identify the main object.',
     schema: IDENTIFY_SCHEMA,
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
+    // Lowest level Hydrogen accepts: keeps the live tag at ~2 s.
+    thinkingLevel: 'LOW',
   })
   const box2d = normalizeBox(raw?.box2d)
   const found = raw?.found === true && box2d !== null && str(raw?.name).trim() !== ''
@@ -720,6 +746,7 @@ export function normalizeAnalysis(raw: any, photoCount = 1): Analysis {
     groups,
     sources: Array.isArray(raw?.sources) ? raw.sources : [],
     reference: raw?.reference ?? null,
+    triage: raw?.triage ?? null,
     assumptions: strList(raw?.assumptions),
     bestPhotoIndex: Math.min(photoCount - 1, Math.max(0, Math.round(num(raw?.bestPhotoIndex, 0)))),
   }

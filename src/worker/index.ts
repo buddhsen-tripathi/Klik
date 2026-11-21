@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
-import type { ScanPhoto, ScanSummary, ScanView } from '../shared/types'
+import type { Analysis, ScanPhoto, ScanSummary, ScanView } from '../shared/types'
+import { checkStep } from './decisions'
 import { identifyFrame } from './gemini'
 
 export { ScanWorkflow } from './workflow'
@@ -134,6 +135,34 @@ app.post('/api/identify', async (c) => {
     apiKey: c.env.GEMINI_API_KEY,
     model: c.env.IDENTIFY_MODEL,
     image: { base64: toBase64(buf), mimeType: type },
+  })
+  return c.json(result)
+})
+
+// Live step check: is the current step done in this camera frame? (Decisions API, ~0.5 s)
+// Body: a small JPEG. Query: step = index in the order the user follows, mode = disassemble | assemble.
+app.post('/api/scans/:id/check', async (c) => {
+  const mode = c.req.query('mode') === 'assemble' ? 'assemble' : 'disassemble'
+  const index = Number(c.req.query('step'))
+  const type = c.req.header('content-type') ?? ''
+  if (!ALLOWED_TYPES.includes(type)) return c.json({ error: 'send the frame as image/jpeg' }, 400)
+  const buf = await c.req.arrayBuffer()
+  if (buf.byteLength === 0 || buf.byteLength > MAX_FRAME_BYTES) return c.json({ error: 'frame must be under 1 MB' }, 400)
+
+  const row = await c.env.DB.prepare('SELECT analysis FROM scans WHERE id = ?').bind(c.req.param('id')).first<{ analysis: string | null }>()
+  const analysis = parseJson<Analysis | null>(row?.analysis ?? null, null)
+  if (!analysis) return c.json({ error: 'scan has no steps yet' }, 404)
+  // Same ordering as the app: assembly is the disassembly list reversed.
+  const steps = mode === 'disassemble' ? analysis.steps : [...analysis.steps].reverse()
+  const step = steps[index]
+  if (!Number.isInteger(index) || !step) return c.json({ error: 'no such step' }, 400)
+
+  const result = await checkStep({
+    apiKey: c.env.GEMINI_API_KEY,
+    frame: { base64: toBase64(buf), mimeType: type },
+    analysis,
+    step,
+    mode,
   })
   return c.json(result)
 })

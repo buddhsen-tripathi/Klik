@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { getScan } from '../api'
 import { orderedSteps, partStates, type Mode } from '../explode'
 import type { ScanView } from '../shared/types'
 import StepsPanel from './StepsPanel'
 import Viewer3D, { type Source } from './Viewer3D'
+
+// Camera code only loads when someone turns on hands-free mode.
+const LiveCheck = lazy(() => import('./LiveCheck'))
 
 const POLL_MS = 2500
 const POLL_STREAMING_MS = 1000 // while Gemini streams parts, poll fast so they appear live
@@ -24,6 +27,8 @@ export default function ScanPage({ id }: { id: string }) {
   const [orient, setOrient] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [spin, setSpin] = useState(false)
+  const [watching, setWatching] = useState(false)
+  const [modeChosen, setModeChosen] = useState(false)
 
   // Poll until the workflow is finished.
   useEffect(() => {
@@ -57,6 +62,13 @@ export default function ScanPage({ id }: { id: string }) {
   // The scanned GLB can be tens of MB, so it is never loaded automatically:
   // the user taps "Load 3D scan" and sees the size first.
   const analysis = scan?.analysis ?? null
+
+  // Photographed loose parts / a kit → start in "Put together" (once; the user can switch).
+  useEffect(() => {
+    if (modeChosen || !analysis?.triage) return
+    setModeChosen(true)
+    if (analysis.triage.state === 'loose_parts') setMode('assemble')
+  }, [analysis?.triage, modeChosen])
   const states = useMemo(() => (analysis ? partStates(analysis, mode, stepIndex) : new Map()), [analysis, mode, stepIndex])
 
   if (loadError && !scan) return <main className="scan-page centered error">{loadError}</main>
@@ -92,8 +104,10 @@ export default function ScanPage({ id }: { id: string }) {
   const steps = orderedSteps(analysis, mode)
   const changeMode = (m: Mode) => {
     setMode(m)
+    setModeChosen(true)
     setStepIndex(-1)
   }
+  const canWatch = steps.length > 0 && scan.stage !== 'analyzing'
 
   return (
     <main className="workbench">
@@ -131,9 +145,34 @@ export default function ScanPage({ id }: { id: string }) {
             <button className={`btn small ${spin ? 'primary' : 'ghost'}`} onClick={() => setSpin((v) => !v)} aria-pressed={spin}>
               {spin ? 'Stop spin' : 'Spin'}
             </button>
+            {canWatch && (
+              <button
+                className={`btn small ${watching ? 'primary' : 'ghost'}`}
+                aria-pressed={watching}
+                title="Hands-free: the camera checks each step and moves on when it's done"
+                onClick={() => {
+                  setWatching((w) => !w)
+                  if (stepIndex < 0) setStepIndex(0)
+                }}
+              >
+                📷 Watch
+              </button>
+            )}
           </div>
         </div>
-        {(scan.stage === 'analyzing' || scan.stage === 'modeling') && <LiveStatus scan={scan} />}
+        {watching && canWatch && (
+          <Suspense fallback={null}>
+            <LiveCheck
+              scanId={scan.id}
+              mode={mode}
+              stepIndex={stepIndex}
+              stepCount={steps.length}
+              onAdvance={() => setStepIndex((i) => Math.min(i + 1, steps.length - 1))}
+              onClose={() => setWatching(false)}
+            />
+          </Suspense>
+        )}
+        {!watching && (scan.stage === 'analyzing' || scan.stage === 'modeling') && <LiveStatus scan={scan} />}
       </section>
 
       <StepsPanel
@@ -197,6 +236,7 @@ function LiveStatus({ scan }: { scan: ScanView }) {
   )
 }
 
+const TRIAGE_STATE = { assembled: 'Assembled', loose_parts: 'Loose parts / kit', partly_assembled: 'Partly assembled' }
 const MATCH_LABEL = { exact: 'Exact manual match', similar: 'Similar model’s manual', none: 'No matching manual' }
 
 /** Checklist shown before the parts arrive: identify → search manuals → read them → plan. */
@@ -212,6 +252,8 @@ function Pipeline({ scan }: { scan: ScanView }) {
   const researchTitle =
     r?.status === 'skipped'
       ? 'Documentation lookup off'
+      : r?.status === 'not_needed'
+        ? 'Generic object, no manual needed'
       : r?.status === 'reading'
         ? `Reading ${r.sources.length} page${r.sources.length === 1 ? '' : 's'} for dimensions and screws`
         : r?.status === 'done'
@@ -225,8 +267,13 @@ function Pipeline({ scan }: { scan: ScanView }) {
       <li className={state(0)}>
         <strong>{id ? id.objectName : 'Identifying the exact model'}</strong>
         {who && <small>{who}</small>}
+        {p.triage && (
+          <small>
+            {TRIAGE_STATE[p.triage.state]} · {p.triage.complexity} · manual {p.triage.hasDocs >= 0.4 ? 'likely' : 'unlikely'}
+          </small>
+        )}
       </li>
-      <li className={r?.status === 'skipped' ? 'pl-todo' : state(1)}>
+      <li className={r?.status === 'skipped' || r?.status === 'not_needed' ? 'pl-todo' : state(1)}>
         <strong>{researchTitle}</strong>
         {r?.status === 'searching' && r.queries.map((q) => <small key={q}>🔎 {q}</small>)}
         {r && r.sources.length > 0 && (
