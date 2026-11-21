@@ -1,0 +1,132 @@
+/* ---------- background tray ---------- */
+
+.tray-pill {
+  position: fixed;
+  z-index: 20;
+  top: calc(env(safe-area-inset-top) + 56px);
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.85rem;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
+  cursor: pointer;
+}
+
+.tray-pill.busy {
+  border-color: var(--accent);
+}
+
+.spinner.small {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+
+.tray-sheet {
+  position: fixed;
+  z-index: 30;
+  left: 12px;
+  right: 12px;
+  top: calc(env(safe-area-inset-top) + 100px);
+  max-width: 420px;
+  margin-left: auto;
+  max-height: 60svh;
+  overflow-y: auto;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 50px rgb(0 0 0 / 0.35);
+}
+
+.tray-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.tray-sheet ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tray-sheet li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tray-sheet li img,
+.thumb-ph {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--surface-2);
+  flex: none;
+}
+
+.tray-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tray-info strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.stage.done {
+  color: #16a34a;
+}
+
+.stage.failed,
+.stage.upload-failed {
+  color: var(--danger);
+}
+
+.notice {
+  position: fixed;
+  z-index: 40;
+  left: 50%;
+  top: calc(env(safe-area-inset-top) + 104px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  padding: 10px 10px 10px 16px;
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.35);
+  font-weight: 600;
+  animation: rise 0.3s ease-out;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+}

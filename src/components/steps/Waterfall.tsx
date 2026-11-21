@@ -1,4 +1,5 @@
-import type { Timing } from '../shared/types'
+import './Waterfall.css'
+import type { Timing } from '../../shared/types'
 
 const secs = (ms: number) => `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
 const TOTALS = new Set(['steps ready', 'model ready'])

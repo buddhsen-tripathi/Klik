@@ -1,0 +1,203 @@
+/* ---------- workbench: viewer + steps ---------- */
+
+.workbench {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.viewer {
+  position: relative;
+  height: 52svh;
+  min-height: 300px;
+  background: var(--viewer-bg);
+  touch-action: none;
+}
+
+.viewer-bar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.viewer-bar > * {
+  pointer-events: auto;
+}
+
+.viewer-bar .btn.ghost {
+  background: var(--surface);
+}
+
+.viewer-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: 50% 100%;
+  animation: slide 1.4s linear infinite;
+}
+
+@keyframes slide {
+  from {
+    background-position: -50% 0;
+  }
+  to {
+    background-position: 150% 0;
+  }
+}
+
+.part-label {
+  background: var(--accent);
+  color: var(--accent-text);
+  font: 700 12px/1.2 system-ui, sans-serif;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.panel {
+  padding: 16px 16px calc(env(safe-area-inset-bottom) + 24px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.panel-head h1 {
+  font-size: 1.4rem;
+  margin: 0;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.step-count {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.step-card h2 {
+  font-size: 1.15rem;
+}
+
+.instruction {
+  font-size: 1.05rem;
+  margin: 0 0 10px;
+}
+
+.parts-line {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0 0 10px;
+}
+
+.caution {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--text);
+}
+
+.overview p {
+  margin: 0 0 12px;
+}
+
+.overview h3,
+.card h3 {
+  font-size: 0.95rem;
+  margin: 12px 0 6px;
+}
+
+.facts {
+  display: flex;
+  gap: 16px;
+  margin: 0;
+}
+
+.facts dt {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.facts dd {
+  margin: 0;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.selected-part h3 {
+  margin-top: 0;
+}
+
+.selected-part p {
+  margin: 0;
+}
+
+details.card summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.step-list {
+  margin: 10px 0 0;
+  padding-left: 1.4rem;
+}
+
+.step-list button {
+  background: none;
+  border: 0;
+  padding: 6px 0;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.step-list li.current button {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+@media (min-width: 900px) {
+  .workbench {
+    flex-direction: row;
+    /* Exactly one screen tall: the 3D view fills it and only the panel scrolls.
+       (flex: 1 alone let a long panel stretch the viewer past the window.) */
+    flex: 0 0 auto;
+    height: calc(100svh - 57px);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .viewer {
+    flex: 1;
+    height: auto;
+  }
+
+  .panel {
+    width: 400px;
+    overflow-y: auto;
+    border-left: 1px solid var(--border);
+    background: var(--bg);
+  }
+}
