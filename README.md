@@ -1,21 +1,24 @@
 # Assemble on the Go
 
-Take a photo of an object, get a 3D model and step-by-step instructions to take it apart or put it together. Runs in the phone browser and deploys as a single Cloudflare Worker.
+Point your phone at an object: the app names it live, guides you around it for a few angles, and builds a 3D model with step-by-step instructions to take it apart or put it together, in the background while you scan the next thing. Runs in the phone browser and deploys as a single Cloudflare Worker.
 
 ## How it works
 
 ```
-Phone browser (React + react-three-fiber)
-   │  photo (resized to 1600 px in the browser)
-   ▼
+Live camera ──(steady + new view, ~512 px frame)──► POST /api/identify ──► Gemini flash-lite: name + box
+   │
+   │  1-6 angles (front, left, back, right, top…), resized to 1600 px in the browser
+   ▼  uploaded in the background; a tray tracks every scan
 Worker (Hono)  ──►  R2 (photos, GLBs)   D1 (scans)
    │
    └─ ScanWorkflow (Cloudflare Workflows, one per scan)
-        1. Gemini: parts, 2D boxes, a rough block model ("blockout") and the steps, as JSON
-        2. fal SAM 3D Objects: one box prompt per visible part → one combined GLB, one node per part
+        1. Gemini: reads all angles, picks the best photo, returns parts, 2D boxes on that photo,
+           a rough block model ("blockout") and the steps, as JSON
+        2. fal SAM 3D Objects (on the best photo): one box prompt per visible part → one combined GLB, one node per part
         3. copy the GLB into R2
 ```
 
+- **Camera:** motion is checked on a 32×24 grayscale thumbnail ~3×/s. Gemini is only called when the view is steady *and* has changed, so a still scene costs one call. The stream stops when the tab is hidden. **Auto** mode takes a shot each time you rotate the object and hold still.
 - The **blockout** shows up as soon as Gemini finishes, so the app still works if 3D generation fails or `FAL_KEY` isn't set.
 - The **3D scan** is never loaded automatically. The user taps "Load 3D scan · N MB".
 - The viewer renders **on demand** (no constant render loop), caps the pixel ratio at 1.5 and frees GPU memory when closed. three.js is only downloaded when a scan is opened.
@@ -29,7 +32,7 @@ npm run db:migrate:local
 npm run dev                       # http://localhost:5173, with the API, D1, R2 and Workflows emulated
 ```
 
-To try it on your phone, run `npm run dev -- --host` and open the network URL it prints (both devices on the same Wi-Fi).
+**Live camera needs HTTPS** (or localhost). On a phone over plain `http://192.168…` the app falls back to the photo picker. To test the camera on a phone, deploy (workers.dev is HTTPS) or tunnel the dev server, e.g. `cloudflared tunnel --url http://localhost:5173`.
 
 ## Deploy
 
@@ -43,7 +46,7 @@ npx wrangler secret put FAL_KEY
 npm run deploy
 ```
 
-Change the Gemini model in `wrangler.jsonc` (`GEMINI_MODEL`, default `gemini-4-neon`).
+Models are set in `wrangler.jsonc`: `GEMINI_MODEL` for the full analysis (default `gemini-4-neon`) and `IDENTIFY_MODEL` for the live camera (default `gemini-3.5-flash-lite`).
 
 ## Layout
 
@@ -54,7 +57,10 @@ Change the Gemini model in `wrangler.jsonc` (`GEMINI_MODEL`, default `gemini-4-n
 | `src/worker/gemini.ts` | Gemini prompt, JSON schema and output clean-up |
 | `src/worker/fal.ts` | fal queue client for SAM 3D |
 | `src/shared/types.ts` | Types shared by Worker and app |
-| `src/components/Capture.tsx` | Camera / upload screen |
+| `src/components/CameraScreen.tsx` | Live camera: identify overlay, rotate guide, auto capture |
+| `src/camera.ts` | Camera stream hook and cheap motion detection |
+| `src/jobs.ts`, `src/components/JobTray.tsx` | Background upload/processing queue and tray |
+| `src/components/Capture.tsx` | Photo-picker fallback (no camera / no HTTPS) |
 | `src/components/ScanPage.tsx` | Progress, viewer and steps |
 | `src/components/Viewer3D.tsx` | Blockout and scanned model, exploded-view animation |
 | `src/explode.ts` | Which parts are out / highlighted at each step |
