@@ -36,7 +36,9 @@
 
   "vars": {
     // Swap to gemini-4-hydrogen if analysis is too slow or costly.
-    "GEMINI_MODEL": "gemini-4-neon"
+    "GEMINI_MODEL": "gemini-4-neon",
+    // Fast, cheap model for naming what's in the live camera view (called every few seconds).
+    "IDENTIFY_MODEL": "gemini-3.5-flash-lite"
   }
   // Secrets (set with `wrangler secret put`, or .dev.vars locally):
   //   GEMINI_API_KEY  - required

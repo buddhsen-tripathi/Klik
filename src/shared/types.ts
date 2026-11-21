@@ -54,6 +54,8 @@ export interface Analysis {
   steps: Step[]
   /** Things Gemini had to guess (hidden fasteners, internals). Shown to the user. */
   assumptions: string[]
+  /** Photo (0-based) Gemini picked for the 3D model. Every part's box2d refers to this photo. */
+  bestPhotoIndex: number
 }
 
 export type ScanStage = 'queued' | 'analyzing' | 'modeling' | 'done' | 'failed'
@@ -63,9 +65,10 @@ export interface ScanView {
   id: string
   createdAt: number
   stage: ScanStage
-  photoUrl: string
-  width: number
-  height: number
+  /** All angles the user took, in capture order. */
+  photos: ScanPhoto[]
+  /** Photo used for the 3D model and the part boxes. */
+  modelPhotoIndex: number
   hint: string | null
   analysis: Analysis | null
   /** Combined scene GLB from SAM 3D (all parts placed together, one node per part). */
@@ -77,4 +80,32 @@ export interface ScanView {
   error: string | null
   /** 3D generation failed or was skipped; the blockout still works. */
   modelError: string | null
+}
+
+export interface ScanPhoto {
+  url: string
+  width: number
+  height: number
+}
+
+/** Short status used by the background tray (GET /api/scans?ids=...). */
+export interface ScanSummary {
+  id: string
+  createdAt: number
+  stage: ScanStage
+  photoUrl: string | null
+  objectName: string | null
+  hint: string | null
+}
+
+/** POST /api/identify: what's in the live camera frame. */
+export interface Identification {
+  found: boolean
+  name: string
+  /** [ymin, xmin, ymax, xmax], 0-1000, relative to the frame that was sent. */
+  box2d: [number, number, number, number] | null
+  /** Can a person realistically take this apart? */
+  disassemblable: boolean
+  /** One short framing tip, e.g. "Step back so the whole chair fits". */
+  tip: string
 }

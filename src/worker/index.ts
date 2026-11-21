@@ -1,9 +1,12 @@
 import { Hono } from 'hono'
-import type { ScanView } from '../shared/types'
+import type { ScanPhoto, ScanSummary, ScanView } from '../shared/types'
+import { identifyFrame } from './gemini'
 
 export { ScanWorkflow } from './workflow'
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024
+const MAX_PHOTOS = 6
+const MAX_FRAME_BYTES = 1024 * 1024
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 const app = new Hono<{ Bindings: Env }>()
@@ -18,45 +21,74 @@ const parseJson = <T>(s: string | null, fallback: T): T => {
   }
 }
 
-// Upload a photo and start the scan pipeline.
+function toBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf)
+  let bin = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(bin)
+}
+
+// Upload 1-6 photos of one object (different angles) and start the scan pipeline.
+// Form fields: photo (repeated), width (repeated), height (repeated), hint (optional).
 app.post('/api/scans', async (c) => {
   const form = await c.req.formData()
-  const photo = form.get('photo')
-  const width = Number(form.get('width'))
-  const height = Number(form.get('height'))
+  const photos = form.getAll('photo')
+  const widths = form.getAll('width').map(Number)
+  const heights = form.getAll('height').map(Number)
   const hint = String(form.get('hint') ?? '').trim().slice(0, 200) || null
 
-  if (!(photo instanceof File)) return c.json({ error: 'photo is required' }, 400)
-  if (!ALLOWED_TYPES.includes(photo.type)) return c.json({ error: `unsupported image type ${photo.type}` }, 400)
-  if (photo.size > MAX_PHOTO_BYTES) return c.json({ error: 'photo is larger than 8 MB' }, 400)
-  if (!(width > 0 && height > 0)) return c.json({ error: 'width and height are required' }, 400)
+  if (photos.length === 0) return c.json({ error: 'at least one photo is required' }, 400)
+  if (photos.length > MAX_PHOTOS) return c.json({ error: `at most ${MAX_PHOTOS} photos per scan` }, 400)
+  for (const [i, photo] of photos.entries()) {
+    if (!(photo instanceof File)) return c.json({ error: `photo ${i} is not a file` }, 400)
+    if (!ALLOWED_TYPES.includes(photo.type)) return c.json({ error: `unsupported image type ${photo.type}` }, 400)
+    if (photo.size > MAX_PHOTO_BYTES) return c.json({ error: `photo ${i} is larger than 8 MB` }, 400)
+    if (!(widths[i] > 0 && heights[i] > 0)) return c.json({ error: `width and height are required for photo ${i}` }, 400)
+  }
   if (!c.env.GEMINI_API_KEY) return c.json({ error: 'GEMINI_API_KEY is not configured on the server' }, 500)
 
   const id = crypto.randomUUID()
-  const photoKey = `scans/${id}/photo`
-  await c.env.FILES.put(photoKey, photo.stream(), { httpMetadata: { contentType: photo.type } })
-  await c.env.DB.prepare(
-    'INSERT INTO scans (id, created_at, stage, hint, photo_key, photo_type, width, height) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-  )
-    .bind(id, Date.now(), 'queued', hint, photoKey, photo.type, Math.round(width), Math.round(height))
-    .run()
+  const files = photos as File[]
+  const keys = files.map((_, i) => `scans/${id}/photo-${i}`)
+  await Promise.all(files.map((f, i) => c.env.FILES.put(keys[i], f.stream(), { httpMetadata: { contentType: f.type } })))
+
+  const w = (i: number) => Math.round(widths[i])
+  const h = (i: number) => Math.round(heights[i])
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      'INSERT INTO scans (id, created_at, stage, hint, photo_key, photo_type, width, height) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    ).bind(id, Date.now(), 'queued', hint, keys[0], files[0].type, w(0), h(0)),
+    ...files.map((f, i) =>
+      c.env.DB.prepare('INSERT INTO scan_photos (scan_id, idx, photo_key, photo_type, width, height) VALUES (?, ?, ?, ?, ?, ?)').bind(
+        id,
+        i,
+        keys[i],
+        f.type,
+        w(i),
+        h(i),
+      ),
+    ),
+  ])
   await c.env.SCAN_WORKFLOW.create({ id, params: { scanId: id } })
 
   return c.json({ id }, 201)
 })
 
-// Poll a scan.
+// Full scan, polled by the scan page.
 app.get('/api/scans/:id', async (c) => {
-  const row = await c.env.DB.prepare('SELECT * FROM scans WHERE id = ?').bind(c.req.param('id')).first<Record<string, any>>()
+  const id = c.req.param('id')
+  const [row, photos] = await Promise.all([
+    c.env.DB.prepare('SELECT * FROM scans WHERE id = ?').bind(id).first<Record<string, any>>(),
+    c.env.DB.prepare('SELECT photo_key, width, height FROM scan_photos WHERE scan_id = ? ORDER BY idx').bind(id).all<Record<string, any>>(),
+  ])
   if (!row) return c.json({ error: 'not found' }, 404)
 
   const view: ScanView = {
     id: row.id,
     createdAt: row.created_at,
     stage: row.stage,
-    photoUrl: fileUrl(row.photo_key)!,
-    width: row.width,
-    height: row.height,
+    photos: photos.results.map((p): ScanPhoto => ({ url: fileUrl(p.photo_key)!, width: p.width, height: p.height })),
+    modelPhotoIndex: row.model_photo_index ?? 0,
     hint: row.hint,
     analysis: parseJson(row.analysis, null),
     modelUrl: fileUrl(row.model_key),
@@ -68,15 +100,41 @@ app.get('/api/scans/:id', async (c) => {
   return c.json(view)
 })
 
-// Recent scans for the home screen.
+// Short statuses: ?ids=a,b,c for the background tray, otherwise the 20 most recent.
 app.get('/api/scans', async (c) => {
-  const { results } = await c.env.DB.prepare(
-    `SELECT id, created_at, stage, photo_key, json_extract(analysis, '$.objectName') AS object_name
-     FROM scans ORDER BY created_at DESC LIMIT 20`,
-  ).all<Record<string, any>>()
+  const ids = (c.req.query('ids') ?? '').split(',').filter(Boolean).slice(0, 30)
+  const select = `SELECT id, created_at, stage, hint, photo_key, json_extract(analysis, '$.objectName') AS object_name FROM scans`
+  const stmt = ids.length
+    ? c.env.DB.prepare(`${select} WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids)
+    : c.env.DB.prepare(`${select} ORDER BY created_at DESC LIMIT 20`)
+  const { results } = await stmt.all<Record<string, any>>()
   return c.json(
-    results.map((r) => ({ id: r.id, createdAt: r.created_at, stage: r.stage, photoUrl: fileUrl(r.photo_key), objectName: r.object_name })),
+    results.map(
+      (r): ScanSummary => ({
+        id: r.id,
+        createdAt: r.created_at,
+        stage: r.stage,
+        photoUrl: fileUrl(r.photo_key),
+        objectName: r.object_name,
+        hint: r.hint,
+      }),
+    ),
   )
+})
+
+// What's in the live camera frame? Body: a small JPEG (the app sends ~512 px).
+app.post('/api/identify', async (c) => {
+  if (!c.env.GEMINI_API_KEY) return c.json({ error: 'GEMINI_API_KEY is not configured on the server' }, 500)
+  const type = c.req.header('content-type') ?? ''
+  if (!ALLOWED_TYPES.includes(type)) return c.json({ error: 'send the frame as image/jpeg' }, 400)
+  const buf = await c.req.arrayBuffer()
+  if (buf.byteLength === 0 || buf.byteLength > MAX_FRAME_BYTES) return c.json({ error: 'frame must be under 1 MB' }, 400)
+  const result = await identifyFrame({
+    apiKey: c.env.GEMINI_API_KEY,
+    model: c.env.IDENTIFY_MODEL,
+    image: { base64: toBase64(buf), mimeType: type },
+  })
+  return c.json(result)
 })
 
 // Serve photos and GLBs from R2. Keys are random UUID paths, so they are not guessable.

@@ -1,5 +1,5 @@
 import { NonRetryableError } from 'cloudflare:workflows'
-import type { Analysis, Part, RemovalDirection, Step } from '../shared/types'
+import type { Analysis, Identification, Part, RemovalDirection, Step } from '../shared/types'
 
 const API = 'https://generativelanguage.googleapis.com/v1beta/models'
 
@@ -60,19 +60,29 @@ const ANALYSIS_SCHEMA = {
       },
     },
     assumptions: { type: 'array', items: { type: 'string' } },
+    bestPhotoIndex: {
+      type: 'integer',
+      description: '0-based index of the photo that shows the most parts with the whole object in frame. All box2d values refer to this photo.',
+    },
   },
-  required: ['objectName', 'summary', 'dimensions', 'difficulty', 'estimatedMinutes', 'tools', 'safety', 'parts', 'steps', 'assumptions'],
+  required: ['objectName', 'summary', 'dimensions', 'difficulty', 'estimatedMinutes', 'tools', 'safety', 'parts', 'steps', 'assumptions', 'bestPhotoIndex'],
 }
 
-function buildPrompt(hint: string | null): string {
-  return `You are a hands-on repair technician. Look at the photo and plan how to take the object apart and put it back together.
-${hint ? `The user says this is: "${hint}".\n` : ''}
+function buildPrompt(hint: string | null, photoCount: number): string {
+  const photos =
+    photoCount > 1
+      ? `You get ${photoCount} photos of the SAME object from different angles (photo 0 first). Use all of them to work out the parts, including ones only visible from some angles.
+Pick bestPhotoIndex = the photo that shows the most parts with the whole object in frame. Every box2d must refer to THAT photo, and "visible" means visible in that photo.`
+      : 'You get one photo. bestPhotoIndex is 0.'
+  return `You are a hands-on repair technician. Look at the photos and plan how to take the object apart and put it back together.
+${hint ? `The user says this is: "${hint}".\n` : ''}${photos}
+
 Return JSON matching the schema. Rules:
 
 PARTS
 - Break the object into the parts a person would actually separate by hand or with common tools (3 to 16 parts). Group tiny identical fasteners into one part (e.g. "4x M6 bolts").
 - Include hidden parts you are confident exist (screws under caps, internal brackets) with visible=false and box2d=null, and say so in "assumptions".
-- box2d: tight box around each VISIBLE part, [ymin, xmin, ymax, xmax] normalised 0-1000. Boxes may overlap.
+- box2d: tight box around each part visible in photo bestPhotoIndex, [ymin, xmin, ymax, xmax] normalised 0-1000. Boxes may overlap.
 
 BLOCKOUT (a rough 3D model built from simple shapes)
 - Units are centimetres. +Y is up and the object stands on y = 0. Origin is the centre of its footprint.
@@ -87,13 +97,20 @@ STEPS
 - Put power, sharp-edge and spring warnings in "caution" and "safety".`
 }
 
-export async function analyzePhoto(opts: {
+export interface InlineImage {
+  base64: string
+  mimeType: string
+}
+
+/** One generateContent call with images + text, answered as JSON matching `schema`. */
+async function generateJson(opts: {
   apiKey: string
   model: string
-  imageBase64: string
-  mimeType: string
-  hint: string | null
-}): Promise<Analysis> {
+  images: InlineImage[]
+  text: string
+  schema: object
+  mediaResolution: 'MEDIA_RESOLUTION_LOW' | 'MEDIA_RESOLUTION_MEDIUM' | 'MEDIA_RESOLUTION_HIGH'
+}): Promise<any> {
   const res = await fetch(`${API}/${opts.model}:generateContent`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': opts.apiKey },
@@ -101,13 +118,19 @@ export async function analyzePhoto(opts: {
       contents: [
         {
           role: 'user',
-          parts: [{ inlineData: { mimeType: opts.mimeType, data: opts.imageBase64 } }, { text: buildPrompt(opts.hint) }],
+          parts: [
+            ...opts.images.flatMap((img, i) => [
+              ...(opts.images.length > 1 ? [{ text: `Photo ${i}:` }] : []),
+              { inlineData: { mimeType: img.mimeType, data: img.base64 } },
+            ]),
+            { text: opts.text },
+          ],
         },
       ],
       generationConfig: {
         responseMimeType: 'application/json',
-        responseJsonSchema: ANALYSIS_SCHEMA,
-        mediaResolution: 'MEDIA_RESOLUTION_HIGH',
+        responseJsonSchema: opts.schema,
+        mediaResolution: opts.mediaResolution,
       },
     }),
   })
@@ -129,9 +152,61 @@ export async function analyzePhoto(opts: {
   const text = candidate?.content?.parts?.filter((p) => !p.thought && p.text).map((p) => p.text).join('')
   if (!text) {
     const reason = body.promptFeedback?.blockReason ?? candidate?.finishReason ?? 'empty response'
-    throw new Error(`Gemini returned no analysis (${reason})`)
+    throw new Error(`Gemini returned nothing (${reason})`)
   }
-  return normalizeAnalysis(JSON.parse(text))
+  return JSON.parse(text)
+}
+
+/** Full analysis of all photos of one object. */
+export async function analyzePhotos(opts: { apiKey: string; model: string; images: InlineImage[]; hint: string | null }): Promise<Analysis> {
+  const raw = await generateJson({
+    apiKey: opts.apiKey,
+    model: opts.model,
+    images: opts.images,
+    text: buildPrompt(opts.hint, opts.images.length),
+    schema: ANALYSIS_SCHEMA,
+    mediaResolution: 'MEDIA_RESOLUTION_HIGH',
+  })
+  return normalizeAnalysis(raw, opts.images.length)
+}
+
+const IDENTIFY_SCHEMA = {
+  type: 'object',
+  properties: {
+    found: { type: 'boolean', description: 'true if one main physical object fills a good part of the frame.' },
+    name: { type: 'string', description: 'Specific name, e.g. "Office chair", "Desk fan", "IKEA LACK side table". Empty if not found.' },
+    box2d: {
+      type: ['array', 'null'],
+      items: { type: 'integer' },
+      minItems: 4,
+      maxItems: 4,
+      description: 'Box around the main object: [ymin, xmin, ymax, xmax] normalised 0-1000. null if not found.',
+    },
+    disassemblable: { type: 'boolean', description: 'Could a person realistically take this apart with hand tools?' },
+    tip: { type: 'string', description: 'One short framing tip for scanning it (max 8 words), e.g. "Step back to fit the whole chair".' },
+  },
+  required: ['found', 'name', 'box2d', 'disassemblable', 'tip'],
+}
+
+/** Fast, cheap check of one live camera frame. */
+export async function identifyFrame(opts: { apiKey: string; model: string; image: InlineImage }): Promise<Identification> {
+  const raw = await generateJson({
+    apiKey: opts.apiKey,
+    model: opts.model,
+    images: [opts.image],
+    text: 'This is a live camera frame from someone who wants to scan an object to take it apart or assemble it. Identify the main object.',
+    schema: IDENTIFY_SCHEMA,
+    mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
+  })
+  const box2d = normalizeBox(raw?.box2d)
+  const found = raw?.found === true && box2d !== null && str(raw?.name).trim() !== ''
+  return {
+    found,
+    name: found ? str(raw.name).trim().slice(0, 60) : '',
+    box2d: found ? box2d : null,
+    disassemblable: raw?.disassemblable !== false,
+    tip: str(raw?.tip).slice(0, 80),
+  }
 }
 
 // ---------- clean-up: never trust model output blindly ----------
@@ -150,7 +225,7 @@ function normalizeBox(v: unknown): Part['box2d'] {
   return box[2] - box[0] < 5 || box[3] - box[1] < 5 ? null : box
 }
 
-export function normalizeAnalysis(raw: any): Analysis {
+export function normalizeAnalysis(raw: any, photoCount = 1): Analysis {
   const seen = new Set<string>()
   const parts: Part[] = (Array.isArray(raw?.parts) ? raw.parts : []).map((p: any, i: number) => {
     let id = str(p?.id).trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_') || `part_${i + 1}`
@@ -197,5 +272,6 @@ export function normalizeAnalysis(raw: any): Analysis {
     parts,
     steps,
     assumptions: strList(raw?.assumptions),
+    bestPhotoIndex: Math.min(photoCount - 1, Math.max(0, Math.round(num(raw?.bestPhotoIndex, 0)))),
   }
 }

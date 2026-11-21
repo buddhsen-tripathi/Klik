@@ -1,19 +1,18 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers'
 import { NonRetryableError } from 'cloudflare:workflows'
 import type { Analysis } from '../shared/types'
-import { analyzePhoto } from './gemini'
+import { analyzePhotos } from './gemini'
 import { getFalResult, getFalStatus, submitSam3d, type FalJob } from './fal'
 
 export interface ScanParams {
   scanId: string
 }
 
-interface ScanRow {
+interface PhotoRow {
   photo_key: string
   photo_type: string
   width: number
   height: number
-  hint: string | null
 }
 
 function toBase64(buf: ArrayBuffer): string {
@@ -44,13 +43,18 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
         .run()
     }
 
-    const loadPhoto = async () => {
-      const row = await db.prepare('SELECT photo_key, photo_type, width, height, hint FROM scans WHERE id = ?').bind(scanId).first<ScanRow>()
-      if (!row) throw new NonRetryableError(`scan ${scanId} not found`)
+    const photoRows = async () => {
+      const { results } = await db
+        .prepare('SELECT photo_key, photo_type, width, height FROM scan_photos WHERE scan_id = ? ORDER BY idx')
+        .bind(scanId)
+        .all<PhotoRow>()
+      if (results.length === 0) throw new NonRetryableError(`no photos for scan ${scanId}`)
+      return results
+    }
+    const readPhoto = async (row: PhotoRow) => {
       const obj = await this.env.FILES.get(row.photo_key)
-      if (!obj) throw new NonRetryableError(`photo missing for scan ${scanId}`)
-      const base64 = toBase64(await obj.arrayBuffer())
-      return { row, base64 }
+      if (!obj) throw new NonRetryableError(`photo ${row.photo_key} missing`)
+      return toBase64(await obj.arrayBuffer())
     }
 
     // 1. Gemini: parts, boxes, blockout and steps.
@@ -61,18 +65,20 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
         { retries: { limit: 2, delay: '5 seconds', backoff: 'exponential' }, timeout: '4 minutes' },
         async () => {
           await setFields({ stage: 'analyzing' })
-          const { row, base64 } = await loadPhoto()
-          const result = await analyzePhoto({
+          const scan = await db.prepare('SELECT hint FROM scans WHERE id = ?').bind(scanId).first<{ hint: string | null }>()
+          const rows = await photoRows()
+          const images = await Promise.all(rows.map(async (r) => ({ base64: await readPhoto(r), mimeType: r.photo_type })))
+          const result = await analyzePhotos({
             apiKey: this.env.GEMINI_API_KEY,
             model: this.env.GEMINI_MODEL,
-            imageBase64: base64,
-            mimeType: row.photo_type,
-            hint: row.hint,
+            images,
+            hint: scan?.hint ?? null,
           })
           if (result.parts.length === 0) throw new NonRetryableError('Gemini could not find any parts in this photo')
           const hasFal = Boolean(this.env.FAL_KEY)
           await setFields({
             analysis: JSON.stringify(result),
+            model_photo_index: result.bestPhotoIndex,
             stage: hasFal ? 'modeling' : 'done',
             model_error: hasFal ? null : 'FAL_KEY is not set, so only the blockout model is available.',
           })
@@ -94,7 +100,10 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
         'submit-3d',
         { retries: { limit: 2, delay: '5 seconds', backoff: 'exponential' }, timeout: '2 minutes' },
         async () => {
-          const { row, base64 } = await loadPhoto()
+          // SAM 3D takes one image: the one Gemini picked, which its part boxes refer to.
+          const rows = await photoRows()
+          const row = rows[Math.min(analysis.bestPhotoIndex, rows.length - 1)]
+          const base64 = await readPhoto(row)
           const { job, partIds } = await submitSam3d({
             apiKey: this.env.FAL_KEY,
             imageDataUri: `data:${row.photo_type};base64,${base64}`,
