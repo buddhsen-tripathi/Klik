@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getScan } from '../../api'
 import type { ScanView } from '../../shared/types'
 import Progress from '../ui/Progress'
 import { STAGE_LABEL } from './labels'
 import Pipeline from './Pipeline'
 import PhotoWithBoxes from './PhotoWithBoxes'
+import { stableScan } from './stableScan'
 import Workbench from './Workbench'
 
 const POLL_MS = 2500
@@ -14,6 +15,7 @@ const POLL_STREAMING_MS = 1000 // while Gemini streams parts, poll fast so they 
 export default function ScanPage({ id }: { id: string }) {
   const [scan, setScan] = useState<ScanView | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const last = useRef('')
 
   // Poll until the workflow is finished.
   useEffect(() => {
@@ -28,7 +30,12 @@ export default function ScanPage({ id }: { id: string }) {
       try {
         const s = await getScan(id)
         if (stop) return
-        setScan(s)
+        // Unchanged (usually a 304 from the ETag): nothing to re-render.
+        const text = JSON.stringify(s)
+        if (text !== last.current) {
+          last.current = text
+          setScan((prev) => stableScan(prev, s))
+        }
         setLoadError(null)
         if (s.stage !== 'done' && s.stage !== 'failed') timer = setTimeout(tick, s.stage === 'analyzing' ? POLL_STREAMING_MS : POLL_MS)
       } catch (err) {

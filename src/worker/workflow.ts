@@ -7,7 +7,8 @@ import { findReferenceImage, referenceCandidates } from './referenceImage'
 import { triage } from './decisions'
 import { analyzePhotos, buildReference, identifyObject, writeGroupSteps, type ThinkingLevel } from './gemini'
 import { checkGroup, checkPlan, orderGroups, repairBrief, type GroupResult } from './review'
-import { getFalResult, getFalStatus, layoutsOf, submitSam3d, type FalJob, type FalStatus } from './fal'
+import { toBase64 } from './util'
+import { getFalResult, getFalStatus, layoutsOf, submitSam3d, type FalJob } from './fal'
 
 export interface ScanParams {
   scanId: string
@@ -18,13 +19,6 @@ interface PhotoRow {
   photo_type: string
   width: number
   height: number
-}
-
-function toBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf)
-  let bin = ''
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  return btoa(bin)
 }
 
 const POLL_EVERY = '3 seconds'
@@ -109,21 +103,37 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
     const markTool = (t: ToolTiming) =>
       mark({ name: t.name, start: t.start, end: t.end, generationId: t.generationId, spanId: t.spanId, note: [t.provider, t.cached ? 'cached' : '', t.ok ? '' : 'failed'].filter(Boolean).join(' · ') || undefined })
 
-    const photoRows = async () => {
-      const { results } = await db
-        .prepare('SELECT photo_key, photo_type, width, height FROM scan_photos WHERE scan_id = ? ORDER BY idx')
-        .bind(scanId)
-        .all<PhotoRow>()
-      if (results.length === 0) throw new NonRetryableError(`no photos for scan ${scanId}`)
-      return results
+    // Photos never change during a run: read each from D1/R2 and base64 it once, not per step.
+    // (A failed read is dropped from the cache so a retry reads again.)
+    let rowsP: Promise<PhotoRow[]> | null = null
+    const photoRows = () =>
+      (rowsP ??= (async () => {
+        const { results } = await db
+          .prepare('SELECT photo_key, photo_type, width, height FROM scan_photos WHERE scan_id = ? ORDER BY idx')
+          .bind(scanId)
+          .all<PhotoRow>()
+        if (results.length === 0) throw new NonRetryableError(`no photos for scan ${scanId}`)
+        return results
+      })().catch((err) => {
+        rowsP = null
+        throw err
+      }))
+    const photoCache = new Map<string, Promise<string>>()
+    const readPhoto = (row: PhotoRow) => {
+      let p = photoCache.get(row.photo_key)
+      if (!p) {
+        p = (async () => {
+          const obj = await this.env.FILES.get(row.photo_key)
+          if (!obj) throw new NonRetryableError(`photo ${row.photo_key} missing`)
+          return toBase64(await obj.arrayBuffer())
+        })()
+        p.catch(() => photoCache.delete(row.photo_key))
+        photoCache.set(row.photo_key, p)
+      }
+      return p
     }
-    const readPhoto = async (row: PhotoRow) => {
-      const obj = await this.env.FILES.get(row.photo_key)
-      if (!obj) throw new NonRetryableError(`photo ${row.photo_key} missing`)
-      return toBase64(await obj.arrayBuffer())
-    }
-    const loadImages = async () => {
-      const rows = await photoRows()
+    const loadImages = async (max = Infinity) => {
+      const rows = (await photoRows()).slice(0, max)
       return Promise.all(rows.map(async (r) => ({ base64: await readPhoto(r), mimeType: r.photo_type })))
     }
 
@@ -219,7 +229,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
         // Routing is a bonus: without it the planner and research just use their defaults.
         step
           .do('triage', { retries: { limit: 1, delay: '2 seconds' }, timeout: '1 minute' }, () =>
-            timed('triage', async () => triage(this.env.GEMINI_API_KEY, await loadImages(), hint), (r) => `${r.state}, ${r.complexity}, docs ${r.hasDocs.toFixed(2)}`),
+            timed('triage', async () => triage(this.env.GEMINI_API_KEY, await loadImages(3), hint), (r) => `${r.state}, ${r.complexity}, docs ${r.hasDocs.toFixed(2)}`),
           )
           .catch((err) => {
             console.warn('triage failed', err)
@@ -557,7 +567,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
       const files: (ModelFile & { key: string })[] = []
       const finished = new Set<number>()
       const failed = new Set<number>()
-      let lastStatus: FalStatus | null = null
+      let reported = -1
 
       for (let i = 0; i < MAX_POLLS && finished.size + failed.size < jobs.length; i++) {
         await step.sleep(`wait-${i}`, POLL_EVERY)
@@ -567,7 +577,6 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
           return res.map((s, k) => ({ j: pending[k], s }))
         })
         const completed = statuses.filter((x) => x.s?.status === 'COMPLETED').map((x) => x.j)
-        lastStatus = statuses.find((x) => x.s && x.s.status !== 'COMPLETED')?.s ?? lastStatus
 
         // Save the newly finished meshes in parallel.
         const saved = await Promise.all(
@@ -614,19 +623,12 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
           } else failed.add(j)
         }
 
-        // Live progress: parts done so far; the app can load them as they arrive.
+        // Live progress: parts done so far; the app can load them as they arrive. Written only when
+        // it changes, so the app's polls get "not modified" in between.
+        if (finished.size + failed.size === reported) continue
+        reported = finished.size + failed.size
         await step.do(`progress-3d-${i}`, async () => {
-          const p: ScanProgress = {
-            thought: null,
-            partsFinal: true,
-            fal: {
-              status: lastStatus?.status === 'IN_QUEUE' && finished.size === 0 ? 'IN_QUEUE' : 'IN_PROGRESS',
-              queuePosition: lastStatus?.queuePosition ?? null,
-              log: lastStatus?.log ?? null,
-              done: finished.size,
-              total: jobs.length,
-            },
-          }
+          const p: ScanProgress = { thought: null, partsFinal: true, fal: { done: finished.size, total: jobs.length } }
           await setFields({
             progress: JSON.stringify(p),
             model_files: files.length ? JSON.stringify(files) : null,

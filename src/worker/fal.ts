@@ -94,21 +94,11 @@ export async function submitSam3d(opts: {
 export interface FalStatus {
   status: 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED'
   queuePosition: number | null
-  /** Latest log line from the model, if any. */
-  log: string | null
 }
 
 export async function getFalStatus(apiKey: string, job: FalJob): Promise<FalStatus> {
-  const url = new URL(job.statusUrl)
-  url.searchParams.set('logs', '1')
-  const data = await falFetch(apiKey, url.toString())
-  const logs = Array.isArray(data.logs) ? data.logs : []
-  const last = logs.length ? String(logs[logs.length - 1]?.message ?? '').trim() : ''
-  return {
-    status: data.status,
-    queuePosition: typeof data.queue_position === 'number' ? data.queue_position : null,
-    log: last ? last.slice(0, 120) : null,
-  }
+  const data = await falFetch(apiKey, job.statusUrl)
+  return { status: data.status, queuePosition: typeof data.queue_position === 'number' ? data.queue_position : null }
 }
 
 export async function getFalResult(apiKey: string, job: FalJob): Promise<Sam3dResult> {

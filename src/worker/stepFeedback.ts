@@ -1,5 +1,6 @@
 import type { Analysis, Step } from '../shared/types'
 import { generateJson, normalizeSteps, STEP_ITEM, type ThinkingLevel } from './gemini'
+import { forgetCheckContext } from './checkContext'
 import { parseJson, toBase64 } from './util'
 
 /**
@@ -90,5 +91,6 @@ If none of the problems are about this step's parts or actions, set applies fals
   const revised: Step = { ...fixed, group: step.group ?? null, revision: { at: Date.now(), reasons: problems.slice(0, 5), count: problems.length + (step.revision?.count ?? 0) } }
   // Only this one step changes; the rest of the analysis is untouched.
   await env.DB.prepare(`UPDATE scans SET analysis = json_set(analysis, '$.steps[${stepIndex}]', json(?)) WHERE id = ?`).bind(JSON.stringify(revised), scanId).run()
+  forgetCheckContext(scanId)
   return { step: revised, reasons: problems }
 }

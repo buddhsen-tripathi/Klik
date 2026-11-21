@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
-import { exportRequestTrace, installFetchTracing, RequestTrace, runTraced } from './tracing'
+import { exportRequestTrace, installFetchTracing, quietTrace, RequestTrace, runTraced } from './tracing'
 import { planSteps } from '../shared/plan'
-import type { Analysis, ModelFile, Recovery, ScanPhoto, ScanSummary, ScanView, Timing } from '../shared/types'
+import type { ModelFile, ScanPhoto, ScanSummary, ScanView } from '../shared/types'
+import { checkContext } from './checkContext'
 import { checkStep } from './decisions'
 import { identifyFrame } from './gemini'
 import assist from './routes/assist'
@@ -27,6 +28,7 @@ app.use('/api/*', async (c, next) => {
   await runTraced(trace, next)
   // Polling reads (GET with no outbound calls) aren't worth an event each.
   if (c.req.method === 'GET' && trace.spans.length === 0) return
+  if (trace.quiet && c.res.status < 400) return
   c.executionCtx.waitUntil(exportRequestTrace(c.env.CLONVO_API_KEY, trace, c.res.status))
 })
 app.route('/api', assist)
@@ -86,6 +88,13 @@ function modelFiles(row: Record<string, any>): ModelFile[] {
   return [{ url: fileUrl(row.model_key)!, partIds: parseJson<string[]>(row.model_part_ids, []), layouts: [], bytes: row.model_bytes }]
 }
 
+/** FNV-1a, for ETags. */
+function hash(s: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193)
+  return (h >>> 0).toString(36) + s.length.toString(36)
+}
+
 // Full scan, polled by the scan page.
 app.get('/api/scans/:id', async (c) => {
   const id = c.req.param('id')
@@ -97,29 +106,30 @@ app.get('/api/scans/:id', async (c) => {
 
   const view: ScanView = {
     id: row.id,
-    createdAt: row.created_at,
     stage: row.stage,
     photos: photos.results.map((p): ScanPhoto => ({ url: fileUrl(p.photo_key)!, width: p.width, height: p.height })),
     modelPhotoIndex: row.model_photo_index ?? 0,
-    hint: row.hint,
     analysis: parseJson(row.analysis, null),
-    modelUrl: fileUrl(row.model_key),
     modelBytes: row.model_bytes,
-    modelPartIds: parseJson<string[]>(row.model_part_ids, []),
     error: row.error,
     modelError: row.model_error,
     progress: parseJson(row.progress, null),
     modelFiles: modelFiles(row),
-    timings: parseJson<Timing[]>(row.timings, []),
     recovery: parseJson(row.recovery, null),
   }
-  return c.json(view)
+  // Polled every 1-2.5 s: an unchanged scan answers 304 with no body (the browser revalidates by ETag).
+  const body = JSON.stringify(view)
+  const etag = `W/"${hash(body)}"`
+  c.header('cache-control', 'private, no-cache')
+  c.header('etag', etag)
+  if (c.req.header('if-none-match') === etag) return c.body(null, 304)
+  return c.body(body, 200, { 'content-type': 'application/json' })
 })
 
 // Short statuses: ?ids=a,b,c for the background tray, otherwise the 20 most recent.
 app.get('/api/scans', async (c) => {
   const ids = (c.req.query('ids') ?? '').split(',').filter(Boolean).slice(0, 30)
-  const select = `SELECT id, created_at, stage, hint, photo_key, json_extract(analysis, '$.objectName') AS object_name FROM scans`
+  const select = `SELECT id, stage, photo_key, json_extract(analysis, '$.objectName') AS object_name FROM scans`
   const stmt = ids.length
     ? c.env.DB.prepare(`${select} WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids)
     : c.env.DB.prepare(`${select} ORDER BY created_at DESC LIMIT 20`)
@@ -128,11 +138,9 @@ app.get('/api/scans', async (c) => {
     results.map(
       (r): ScanSummary => ({
         id: r.id,
-        createdAt: r.created_at,
         stage: r.stage,
         photoUrl: fileUrl(r.photo_key),
         objectName: r.object_name,
-        hint: r.hint,
       }),
     ),
   )
@@ -163,14 +171,11 @@ app.post('/api/scans/:id/check', async (c) => {
   const buf = await c.req.arrayBuffer()
   if (buf.byteLength === 0 || buf.byteLength > MAX_FRAME_BYTES) return c.json({ error: 'frame must be under 1 MB' }, 400)
 
-  const row = await c.env.DB.prepare('SELECT analysis, recovery FROM scans WHERE id = ?')
-    .bind(c.req.param('id'))
-    .first<{ analysis: string | null; recovery: string | null }>()
-  const analysis = parseJson<Analysis | null>(row?.analysis ?? null, null)
+  const { analysis, recovery: savedRecovery } = await checkContext(c.env.DB, c.req.param('id'))
   if (!analysis) return c.json({ error: 'scan has no steps yet' }, 404)
   // Same ordering as the app: assembly is the disassembly list reversed; ?plan=1 = the fix plan.
   const ordered = mode === 'disassemble' ? analysis.steps : [...analysis.steps].reverse()
-  const recovery = c.req.query('plan') === '1' ? parseJson<Recovery | null>(row?.recovery ?? null, null) : null
+  const recovery = c.req.query('plan') === '1' ? savedRecovery : null
   const steps = recovery && recovery.mode === mode ? planSteps(ordered, recovery) : ordered
   const step = steps[index]
   if (!Number.isInteger(index) || !step) return c.json({ error: 'no such step' }, 400)
@@ -182,6 +187,8 @@ app.post('/api/scans/:id/check', async (c) => {
     step,
     mode,
   })
+  // Runs every ~1.2 s while the camera is up: trace only the frames where the step looks done.
+  if (result.done < 0.5) quietTrace()
   return c.json(result)
 })
 

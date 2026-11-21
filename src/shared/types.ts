@@ -151,20 +151,14 @@ export type ScanStage = 'queued' | 'analyzing' | 'modeling' | 'done' | 'failed'
 /** What GET /api/scans/:id returns. */
 export interface ScanView {
   id: string
-  createdAt: number
   stage: ScanStage
   /** All angles the user took, in capture order. */
   photos: ScanPhoto[]
   /** Photo used for the 3D model and the part boxes. */
   modelPhotoIndex: number
-  hint: string | null
   analysis: Analysis | null
-  /** Combined scene GLB from SAM 3D (all parts placed together, one node per part). */
-  modelUrl: string | null
   /** Size of the GLB, so the app can load it only when the user asks. */
   modelBytes: number | null
-  /** Part ids in the order they were sent to SAM 3D as box prompts (= node order in the GLB). */
-  modelPartIds: string[]
   error: string | null
   /** 3D generation failed or was skipped; the blockout still works. */
   modelError: string | null
@@ -172,8 +166,6 @@ export interface ScanView {
   progress: ScanProgress | null
   /** Scanned meshes: one file per parallel SAM 3D job (or the single combined file on old scans). */
   modelFiles: ModelFile[]
-  /** Latency waterfall (epoch ms). */
-  timings: Timing[]
   /** Latest "check my progress" result, if any. */
   recovery: Recovery | null
 }
@@ -223,14 +215,8 @@ export interface ScanProgress {
   thought: string | null
   /** Parts list is complete (Gemini is now writing steps). */
   partsFinal: boolean
-  fal: {
-    status: 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED'
-    queuePosition: number | null
-    log: string | null
-    /** Parallel per-part jobs: how many have finished out of how many. */
-    done?: number
-    total?: number
-  } | null
+  /** 3D: how many of the parallel per-part jobs have finished. */
+  fal: { done: number; total: number } | null
   /** Pipeline phase while analyzing. */
   phase?: 'identifying' | 'researching' | 'planning' | 'writing' | 'reviewing'
   /** What we think it is, from the identify pass. */
@@ -256,11 +242,9 @@ export interface ScanPhoto {
 /** Short status used by the background tray (GET /api/scans?ids=...). */
 export interface ScanSummary {
   id: string
-  createdAt: number
   stage: ScanStage
   photoUrl: string | null
   objectName: string | null
-  hint: string | null
 }
 
 /** POST /api/identify: what's in the live camera frame. */

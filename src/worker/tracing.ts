@@ -14,6 +14,8 @@ export class RequestTrace {
   readonly spans: SpanData[] = []
   readonly name: string
   readonly sessionId: string | null
+  /** Routine result of a frequent request (e.g. "step not done yet"): not worth a trace. */
+  quiet = false
   constructor(name: string, sessionId: string | null) {
     this.name = name
     this.sessionId = sessionId
@@ -22,6 +24,11 @@ export class RequestTrace {
 
 const store = new AsyncLocalStorage<RequestTrace>()
 export const runTraced = <T>(trace: RequestTrace, fn: () => Promise<T>) => store.run(trace, fn)
+/** Mark the current request's trace as routine, so it isn't exported (errors still are). */
+export const quietTrace = () => {
+  const t = store.getStore()
+  if (t) t.quiet = true
+}
 
 /** What an outbound URL is, in OpenTelemetry GenAI terms. */
 function describe(url: URL): { name: string; kind: 'llm' | 'tool' | 'http'; attributes: Record<string, string> } {

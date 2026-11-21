@@ -6,6 +6,7 @@ import { exportSpans, newSpanId } from '../otel'
 import { checkProgress } from '../recovery'
 import { maybeReviseStep, recordFeedback } from '../stepFeedback'
 import { ALLOWED_TYPES, fileUrl, parseJson, toBase64 } from '../util'
+import { forgetCheckContext } from '../checkContext'
 
 const MAX_CHECK_BYTES = 4 * 1024 * 1024
 const LIVE_SESSION_MINUTES = 30
@@ -86,6 +87,7 @@ assist.post('/scans/:id/progress', async (c) => {
   ])
   const recovery: Recovery = { ...result, createdAt: Date.now(), photoUrl: fileUrl(key) }
   await c.env.DB.prepare('UPDATE scans SET recovery = ? WHERE id = ?').bind(JSON.stringify(recovery), id).run()
+  forgetCheckContext(id)
   // Learning from use: each mistake counts against its guide step; enough of them and the step is rewritten.
   const n = analysis.steps.length
   const flagged = recovery.mistakes.filter((m) => m.stepIndex != null).map((m) => ({ index: mode === 'disassemble' ? m.stepIndex! : n - 1 - m.stepIndex!, problem: `${m.problem}${m.fix ? ` (fix: ${m.fix})` : ''}` }))
@@ -102,6 +104,7 @@ assist.post('/scans/:id/progress', async (c) => {
 // Back to the full guide.
 assist.delete('/scans/:id/recovery', async (c) => {
   await c.env.DB.prepare('UPDATE scans SET recovery = NULL WHERE id = ?').bind(c.req.param('id')).run()
+  forgetCheckContext(c.req.param('id'))
   return c.body(null, 204)
 })
 
