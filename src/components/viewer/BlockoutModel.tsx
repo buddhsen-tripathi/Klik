@@ -4,6 +4,7 @@ import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { DIRECTION_VECTORS, explodeDistance, type PartState } from '../../explode'
 import type { ModelFile, Part } from '../../shared/types'
+import FastenerMesh from './FastenerMesh'
 import ReferenceMesh from './ReferenceMesh'
 import { ACTIVE_COLOR, BLACK, deg, EASE, EPS, NO_STATE } from './constants'
 import { blockTraySlots, type Slot } from './tray'
@@ -136,6 +137,9 @@ function BlockoutPart(props: {
             <ReferenceMesh file={reference} part={part} opacity={targetOpacity} highlight={highlight} active={state.active} />
           </Suspense>
         </group>
+      ) : part.kind === 'fastener' ? (
+        // Screws, bolts, nuts: drawn exactly from their spec, one per piece.
+        <FastenerMesh part={part} material={mat} onClick={click as (e: never) => void} />
       ) : (
         <mesh scale={scale} onClick={click}>
           {part.shape === 'cylinder' ? (

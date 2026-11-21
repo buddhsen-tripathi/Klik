@@ -66,7 +66,8 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
   const canWatch = steps.length > 0 && scan.stage !== 'analyzing'
   const hasScan = scan.modelFiles.length > 0
   // Wait for the finished 3D model instead of showing a block preview while it's built.
-  const waiting = scan.stage === 'analyzing' || scan.stage === 'modeling'
+  // Parts stream in while modelling: only wait for the first one.
+  const waiting = scan.stage === 'analyzing' || (scan.stage === 'modeling' && scan.modelFiles.length === 0)
   // Show the real scan (texture and shape) as soon as it exists, unless it's huge or the user picked boxes.
   const [sourceChoice, setSource] = useState<Source | null>(null)
   const autoScan = hasScan && (scan.modelBytes ?? 0) <= AUTO_LOAD_BYTES && !saveData()

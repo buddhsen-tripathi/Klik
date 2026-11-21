@@ -26,15 +26,25 @@ export default function ScannedModel(props: ViewerProps) {
   // Reference-photo models (hidden parts) aren't part of the placed scan; they replace those parts' blocks.
   const fileKey = props.modelFiles.map((f) => f.url).join('|')
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const stableFiles = useMemo(() => props.modelFiles.filter((f) => f.source !== 'reference'), [fileKey])
+  const stableFiles = useMemo(() => props.modelFiles.filter((f) => !f.source || f.source === 'photo'), [fileKey])
+  // High-quality part models stream in on their own and replace SAM 3D's rough mesh for that part.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stableGenerated = useMemo(() => props.modelFiles.filter((f) => f.source === 'generated'), [fileKey])
+  const files = useDeferredValue(stableFiles)
+  const generatedFiles = useDeferredValue(stableGenerated)
+  const urls = useMemo(() => [...files, ...generatedFiles].map((f) => f.url), [files, generatedFiles])
+  const loadedGltfs = useGLTF(urls) as unknown as { scene: THREE.Object3D }[]
+  const gltfs = useMemo(() => loadedGltfs.slice(0, files.length), [loadedGltfs, files.length])
+  const generated = useMemo(
+    () => new Map(generatedFiles.map((f, i) => [f.partIds[0], loadedGltfs[files.length + i]?.scene] as const).filter((e) => e[1])),
+    [generatedFiles, loadedGltfs, files.length],
+  )
+  // Parts SAM 3D couldn't see: drawn by the block layer from a reference photo or a high-quality model.
   const references = useMemo(
-    () => new Map(props.modelFiles.filter((f) => f.source === 'reference').map((f) => [f.partIds[0], f])),
+    () => new Map(props.modelFiles.filter((f) => f.source === 'reference' || f.source === 'generated').map((f) => [f.partIds[0], f])),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [fileKey],
   )
-  const files = useDeferredValue(stableFiles)
-  const urls = useMemo(() => files.map((f) => f.url), [files])
-  const gltfs = useGLTF(urls) as unknown as { scene: THREE.Object3D }[]
   const invalidate = useThree((s) => s.invalidate)
   const anisotropy = useThree((s) => Math.min(4, s.gl.capabilities.getMaxAnisotropy()))
 
@@ -64,7 +74,9 @@ export default function ScannedModel(props: ViewerProps) {
           // "4 wheels" scanned as one mesh → four objects that each move on their own.
           const copies = splitInstances(holder, quantity(file.partIds[k]))
           copies?.forEach((c) => c.traverse((o) => (o as THREE.Mesh).isMesh && geometries.push((o as THREE.Mesh).geometry)))
-          for (const obj of copies ?? [holder]) {
+          const hq = generated.get(file.partIds[k])
+          for (const piece of copies ?? [holder]) {
+            const obj = hq ? fitInto(hq, piece) : piece
             obj.userData.partId = file.partIds[k]
             root.add(obj)
             objects.push(obj)
@@ -98,7 +110,7 @@ export default function ScannedModel(props: ViewerProps) {
       return list
     })
     return { root, objects, split, materials, partIds, geometries, bases: objects.map((o) => o.position.clone()) }
-  }, [files, gltfs, anisotropy, analysis.parts])
+  }, [files, gltfs, anisotropy, analysis.parts, generated])
   const modelPartIds = prepared.partIds
 
   // Material clones belong to one `prepared`; drop them when a new file is added.
@@ -111,10 +123,10 @@ export default function ScannedModel(props: ViewerProps) {
   )
 
   // Free GPU memory when the scan is closed (not when a new part arrives), and drop it from drei's cache.
-  const loaded = useRef({ gltfs, urls })
+  const loaded = useRef({ gltfs: loadedGltfs, urls })
   useEffect(() => {
-    loaded.current = { gltfs, urls }
-  }, [gltfs, urls])
+    loaded.current = { gltfs: loadedGltfs, urls }
+  }, [loadedGltfs, urls])
   useEffect(
     () => () => {
       for (const g of loaded.current.gltfs)
@@ -336,4 +348,28 @@ export default function ScannedModel(props: ViewerProps) {
       {prepared.split && hidden.size > 0 && <BlockoutModel {...props} ghost only={hidden} traySlots={tray?.blockSlots} references={references} />}
     </>
   )
+}
+
+/**
+ * A high-quality part mesh in place of SAM 3D's rough one: centred on where SAM 3D put the part and
+ * scaled uniformly so its longest side matches (its own shape and proportions are kept).
+ */
+function fitInto(hq: THREE.Object3D, rough: THREE.Object3D): THREE.Object3D {
+  rough.updateMatrixWorld(true)
+  const target = new THREE.Box3().setFromObject(rough)
+  const inner = hq.clone(true)
+  inner.traverse((o) => {
+    const mesh = o as THREE.Mesh
+    if (mesh.isMesh) mesh.material = Array.isArray(mesh.material) ? mesh.material.map((m) => m.clone()) : mesh.material.clone()
+  })
+  inner.updateMatrixWorld(true)
+  const own = new THREE.Box3().setFromObject(inner)
+  const size = own.getSize(new THREE.Vector3())
+  const want = target.getSize(new THREE.Vector3())
+  inner.position.sub(own.getCenter(new THREE.Vector3()))
+  const out = new THREE.Group()
+  out.add(inner)
+  out.scale.setScalar(Math.max(want.x, want.y, want.z) / Math.max(size.x, size.y, size.z, 1e-6))
+  out.position.copy(target.getCenter(new THREE.Vector3()))
+  return out
 }

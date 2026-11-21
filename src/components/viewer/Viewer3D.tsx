@@ -27,6 +27,16 @@ export default function Viewer3D(props: ViewerProps) {
   const height = analysis.dimensions[1]
 
   const blockout = <BlockoutModel {...props} />
+  // Before SAM 3D lands, high-quality parts stream in on their own at their planned spots (no blocks
+  // for the rest), with fasteners drawn from their specs.
+  const scanned = props.modelFiles.some((f) => !f.source || f.source === 'photo')
+  const streamed = useMemo(() => {
+    const gen = props.modelFiles.filter((f) => f.source === 'generated' || f.source === 'reference')
+    if (!gen.length) return null
+    const refs = new Map(gen.map((f) => [f.partIds[0], f]))
+    const only = new Set([...refs.keys(), ...analysis.parts.filter((p) => p.kind === 'fastener').map((p) => p.id)])
+    return { refs, only }
+  }, [props.modelFiles, analysis.parts])
 
   // Frame the object plus the tray spots that are in use right now (approximated with the block sizes).
   const slots = useMemo(() => blockTraySlots(analysis), [analysis])
@@ -54,7 +64,12 @@ export default function Viewer3D(props: ViewerProps) {
         cellThickness={0.5}
         position={[0, -0.01, 0]}
       />
-      {props.waiting ? null : props.source === 'scan' && props.modelFiles.length > 0 ? (
+      {props.waiting ? null : props.source === 'scan' && streamed && !scanned ? (
+        <>
+          <StudioLighting />
+          <BlockoutModel {...props} only={streamed.only} references={streamed.refs} />
+        </>
+      ) : props.source === 'scan' && props.modelFiles.length > 0 ? (
         // Keyed on the files + retry count, so a new part or a retry gets a fresh attempt instead of staying on boxes.
         <ModelErrorBoundary key={`${props.retryKey ?? 0}:${props.modelFiles.length}`} fallback={blockout} onError={props.onScanError}>
           <StudioLighting />
