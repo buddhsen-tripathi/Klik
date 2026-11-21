@@ -132,3 +132,12 @@ export async function searchPages(
   if (!notes && failed.length === results.length && failed.length) throw failed[0].reason
   return { notes: notes.slice(0, MAX_NOTES), sources }
 }
+
+/** Short cited answer for the voice agent's "search the web" tool. */
+export async function webAnswer(apiKey: string, question: string): Promise<{ answer: string; sources: Source[] }> {
+  const r = await callTool<AnswerResult>(apiKey, 'web_answer', { query: question }, 20_000, 'clonvo.web_answer.agent')
+  return {
+    answer: (r.answer ?? '').trim(),
+    sources: (r.citations ?? []).filter((c) => c.url).slice(0, 5).map((c) => ({ title: c.title || c.url, url: c.url })),
+  }
+}

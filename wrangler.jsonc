@@ -45,7 +45,9 @@
     // Parallel SAM 3D jobs per scan (one per part, $0.02 each). SAM 3D takes ~25 s per box, so one job per part is fastest.
     "MAX_3D_JOBS": "10",
     // Fast, cheap model for naming what's in the live camera view (called every few seconds).
-    "IDENTIFY_MODEL": "gemini-4-hydrogen"
+    "IDENTIFY_MODEL": "gemini-4-hydrogen",
+    // Voice agent (Gemini Live, audio in and out, tool calls). Browser connects directly with an ephemeral token.
+    "LIVE_MODEL": "gemini-3.8-live"
   }
   // Secrets (set with `wrangler secret put`, or .dev.vars locally):
   //   GEMINI_API_KEY  - required
