@@ -20,6 +20,10 @@ export interface ViewerProps {
   modelFiles: ModelFile[]
   /** Scan's measured size vs the documented/estimated dimensions. */
   onMeasured?: (check: SizeCheck | null) => void
+  /** A scan file failed to load (the view fell back to boxes). */
+  onScanError?: () => void
+  /** Bump to retry loading the scan after a failure. */
+  retryKey?: number
   /** Quarter turns around X, to fix scans that come back lying on their side. */
   orient: number
   /** Turntable: slowly orbit the model. The only mode that renders continuously. */

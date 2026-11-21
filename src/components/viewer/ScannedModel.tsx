@@ -16,7 +16,11 @@ export default function ScannedModel(props: ViewerProps) {
   const { analysis, states, orient, selectedId, onSelect } = props
   // Per-part meshes arrive one by one while the scan is still modelling. Deferring the list keeps
   // the parts already on screen while the next file loads, instead of flashing the fallback.
-  const files = useDeferredValue(props.modelFiles)
+  // Polling hands us a new array every few seconds; only a new file should rebuild the scene.
+  const fileKey = props.modelFiles.map((f) => f.url).join('|')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stableFiles = useMemo(() => props.modelFiles, [fileKey])
+  const files = useDeferredValue(stableFiles)
   const urls = useMemo(() => files.map((f) => f.url), [files])
   const gltfs = useGLTF(urls) as unknown as { scene: THREE.Object3D }[]
   const invalidate = useThree((s) => s.invalidate)

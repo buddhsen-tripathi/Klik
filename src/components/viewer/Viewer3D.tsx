@@ -47,7 +47,8 @@ export default function Viewer3D(props: ViewerProps) {
         position={[0, -0.01, 0]}
       />
       {props.source === 'scan' && props.modelFiles.length > 0 ? (
-        <ModelErrorBoundary fallback={blockout}>
+        // Keyed on the files + retry count, so a new part or a retry gets a fresh attempt instead of staying on boxes.
+        <ModelErrorBoundary key={`${props.retryKey ?? 0}:${props.modelFiles.length}`} fallback={blockout} onError={props.onScanError}>
           <StudioLighting />
           <Suspense fallback={<BlockoutModel {...props} ghost />}>
             <ScannedModel {...props} />
