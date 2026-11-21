@@ -96,6 +96,7 @@ app.get('/api/scans/:id', async (c) => {
     modelPartIds: parseJson<string[]>(row.model_part_ids, []),
     error: row.error,
     modelError: row.model_error,
+    progress: parseJson(row.progress, null),
   }
   return c.json(view)
 })

@@ -1,4 +1,5 @@
 import { NonRetryableError } from 'cloudflare:workflows'
+import { parsePartialJson } from './partial-json'
 import type { Analysis, Identification, Part, RemovalDirection, Step } from '../shared/types'
 
 const API = 'https://generativelanguage.googleapis.com/v1beta/models'
@@ -10,8 +11,14 @@ const DIRECTIONS: RemovalDirection[] = ['up', 'down', 'left', 'right', 'front', 
 const ANALYSIS_SCHEMA = {
   type: 'object',
   properties: {
+    // Order matters: Gemini writes keys in this order while streaming. Name and best photo come
+    // first so the UI and the early 3D submit can use them; parts come before steps.
     objectName: { type: 'string' },
-    summary: { type: 'string', description: 'One or two sentences on what the object is and how it is held together.' },
+    bestPhotoIndex: {
+      type: 'integer',
+      description: '0-based index of the photo that shows the most parts with the whole object in frame. All box2d values refer to this photo.',
+    },
+    summary: { type: 'string', description: 'One short sentence (max 25 words) on what it is and how it is held together.' },
     dimensions: { ...vec3, description: 'Estimated overall [width, height, depth] in cm.' },
     difficulty: { type: 'string', enum: ['easy', 'medium', 'hard'] },
     estimatedMinutes: { type: 'integer' },
@@ -60,12 +67,8 @@ const ANALYSIS_SCHEMA = {
       },
     },
     assumptions: { type: 'array', items: { type: 'string' } },
-    bestPhotoIndex: {
-      type: 'integer',
-      description: '0-based index of the photo that shows the most parts with the whole object in frame. All box2d values refer to this photo.',
-    },
   },
-  required: ['objectName', 'summary', 'dimensions', 'difficulty', 'estimatedMinutes', 'tools', 'safety', 'parts', 'steps', 'assumptions', 'bestPhotoIndex'],
+  required: ['objectName', 'bestPhotoIndex', 'summary', 'dimensions', 'difficulty', 'estimatedMinutes', 'tools', 'safety', 'parts', 'steps', 'assumptions'],
 }
 
 function buildPrompt(hint: string | null, photoCount: number): string {
@@ -134,20 +137,8 @@ async function generateJson(opts: {
       },
     }),
   })
-  if (!res.ok) {
-    const raw = await res.text()
-    let message = raw.slice(0, 300)
-    try {
-      message = JSON.parse(raw)?.error?.message ?? message
-    } catch {}
-    const msg = `Gemini ${res.status}: ${message}`
-    // Bad key / bad request won't fix themselves; only retry rate limits and server errors.
-    throw res.status < 500 && res.status !== 429 ? new NonRetryableError(msg) : new Error(msg)
-  }
-  const body = (await res.json()) as {
-    candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[]
-    promptFeedback?: { blockReason?: string }
-  }
+  if (!res.ok) throw await geminiError(res)
+  const body = (await res.json()) as GeminiChunk
   const candidate = body.candidates?.[0]
   const text = candidate?.content?.parts?.filter((p) => !p.thought && p.text).map((p) => p.text).join('')
   if (!text) {
@@ -157,17 +148,149 @@ async function generateJson(opts: {
   return JSON.parse(text)
 }
 
-/** Full analysis of all photos of one object. */
-export async function analyzePhotos(opts: { apiKey: string; model: string; images: InlineImage[]; hint: string | null }): Promise<Analysis> {
-  const raw = await generateJson({
+export type ThinkingLevel = 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH'
+
+type GeminiChunk = {
+  candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[]
+  promptFeedback?: { blockReason?: string }
+}
+
+async function geminiError(res: Response): Promise<Error> {
+  const raw = await res.text()
+  let message = raw.slice(0, 300)
+  try {
+    message = JSON.parse(raw)?.error?.message ?? message
+  } catch {}
+  const msg = `Gemini ${res.status}: ${message}`
+  // Bad key / bad request won't fix themselves; only retry rate limits and server errors.
+  return res.status < 500 && res.status !== 429 ? new NonRetryableError(msg) : new Error(msg)
+}
+
+/**
+ * streamGenerateContent over SSE. Calls onText with the full answer text so far, and
+ * onThought with each thought-summary chunk. Returns the final answer text.
+ */
+async function streamText(opts: {
+  apiKey: string
+  model: string
+  images: InlineImage[]
+  text: string
+  schema: object
+  thinkingLevel: ThinkingLevel | null
+  onText: (soFar: string) => void
+  onThought: (chunk: string) => void
+}): Promise<string> {
+  const body = (withThinking: boolean) =>
+    JSON.stringify({
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            ...opts.images.flatMap((img, i) => [
+              ...(opts.images.length > 1 ? [{ text: `Photo ${i}:` }] : []),
+              { inlineData: { mimeType: img.mimeType, data: img.base64 } },
+            ]),
+            { text: opts.text },
+          ],
+        },
+      ],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseJsonSchema: opts.schema,
+        // Several photos at HIGH is a lot of tokens; MEDIUM is plenty for 3+ angles.
+        mediaResolution: opts.images.length >= 3 ? 'MEDIA_RESOLUTION_MEDIUM' : 'MEDIA_RESOLUTION_HIGH',
+        ...(withThinking && opts.thinkingLevel ? { thinkingConfig: { includeThoughts: true, thinkingLevel: opts.thinkingLevel } } : {}),
+      },
+    })
+  const call = (withThinking: boolean) =>
+    fetch(`${API}/${opts.model}:streamGenerateContent?alt=sse`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': opts.apiKey },
+      body: body(withThinking),
+    })
+
+  let res = await call(true)
+  // Some models reject thinking settings; fall back to a plain request once.
+  if (res.status === 400 && opts.thinkingLevel) {
+    const err = await geminiError(res.clone())
+    if (/think/i.test(err.message)) res = await call(false)
+    else throw err
+  }
+  if (!res.ok || !res.body) throw await geminiError(res)
+
+  let answer = ''
+  let finish: string | undefined
+  let blocked: string | undefined
+  let buffer = ''
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += value
+    let sep: number
+    while ((sep = buffer.search(/\r?\n\r?\n/)) >= 0) {
+      const event = buffer.slice(0, sep)
+      buffer = buffer.slice(sep).replace(/^\r?\n\r?\n/, '')
+      const data = event
+        .split(/\r?\n/)
+        .filter((l) => l.startsWith('data:'))
+        .map((l) => l.slice(5).trim())
+        .join('')
+      if (!data) continue
+      const chunk = JSON.parse(data) as GeminiChunk
+      blocked ??= chunk.promptFeedback?.blockReason
+      const cand = chunk.candidates?.[0]
+      finish = cand?.finishReason ?? finish
+      let grew = false
+      for (const part of cand?.content?.parts ?? []) {
+        if (!part.text) continue
+        if (part.thought) opts.onThought(part.text)
+        else {
+          answer += part.text
+          grew = true
+        }
+      }
+      if (grew) opts.onText(answer)
+    }
+  }
+  if (!answer) throw new Error(`Gemini returned nothing (${blocked ?? finish ?? 'empty response'})`)
+  return answer
+}
+
+/**
+ * Full analysis of all photos of one object, streamed. onPartial gets a cleaned-up
+ * Analysis with only fully written parts and steps, plus whether the parts list is final.
+ */
+export async function analyzePhotos(opts: {
+  apiKey: string
+  model: string
+  images: InlineImage[]
+  hint: string | null
+  thinkingLevel: ThinkingLevel | null
+  onPartial?: (partial: Analysis, partsFinal: boolean) => void
+  onThought?: (chunk: string) => void
+}): Promise<Analysis> {
+  const answer = await streamText({
     apiKey: opts.apiKey,
     model: opts.model,
     images: opts.images,
     text: buildPrompt(opts.hint, opts.images.length),
     schema: ANALYSIS_SCHEMA,
-    mediaResolution: 'MEDIA_RESOLUTION_HIGH',
+    thinkingLevel: opts.thinkingLevel,
+    onThought: (c) => opts.onThought?.(c),
+    onText: (soFar) => {
+      if (!opts.onPartial) return
+      const raw = parsePartialJson(soFar)
+      if (!raw || typeof raw !== 'object') return
+      // Only keep parts/steps whose last schema field has arrived, so nothing half-defined is drawn.
+      const parts = Array.isArray(raw.parts) ? raw.parts.filter((p: any) => p && 'removalDirection' in p) : []
+      const steps = Array.isArray(raw.steps) ? raw.steps.filter((s: any) => s && 'caution' in s) : []
+      // Parts are final once Gemini has moved on to the steps.
+      const partsFinal = 'steps' in raw
+      opts.onPartial(normalizeAnalysis({ ...raw, parts, steps }, opts.images.length), partsFinal)
+    },
   })
-  return normalizeAnalysis(raw, opts.images.length)
+  return normalizeAnalysis(JSON.parse(answer), opts.images.length)
 }
 
 const IDENTIFY_SCHEMA = {

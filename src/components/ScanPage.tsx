@@ -6,6 +6,7 @@ import StepsPanel from './StepsPanel'
 import Viewer3D, { type Source } from './Viewer3D'
 
 const POLL_MS = 2500
+const POLL_STREAMING_MS = 1000 // while Gemini streams parts, poll fast so they appear live
 const STAGE_LABEL: Record<ScanView['stage'], string> = {
   queued: 'Queued…',
   analyzing: 'Gemini is identifying the parts…',
@@ -22,6 +23,7 @@ export default function ScanPage({ id }: { id: string }) {
   const [source, setSource] = useState<Source>('blockout')
   const [orient, setOrient] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [spin, setSpin] = useState(false)
 
   // Poll until the workflow is finished.
   useEffect(() => {
@@ -38,7 +40,7 @@ export default function ScanPage({ id }: { id: string }) {
         if (stop) return
         setScan(s)
         setLoadError(null)
-        if (s.stage !== 'done' && s.stage !== 'failed') timer = setTimeout(tick, POLL_MS)
+        if (s.stage !== 'done' && s.stage !== 'failed') timer = setTimeout(tick, s.stage === 'analyzing' ? POLL_STREAMING_MS : POLL_MS)
       } catch (err) {
         if (stop) return
         setLoadError((err as Error).message)
@@ -78,7 +80,7 @@ export default function ScanPage({ id }: { id: string }) {
     return (
       <main className="scan-page">
         <PhotoWithBoxes scan={scan} />
-        <Progress label={STAGE_LABEL[scan.stage]} />
+        <Progress label={scan.progress?.thought ? `${scan.progress.thought}…` : STAGE_LABEL[scan.stage]} />
       </main>
     )
   }
@@ -99,6 +101,7 @@ export default function ScanPage({ id }: { id: string }) {
           modelUrl={scan.modelUrl}
           modelPartIds={scan.modelPartIds}
           orient={orient}
+          spin={spin}
           selectedId={selectedId}
           onSelect={setSelectedId}
         />
@@ -115,13 +118,18 @@ export default function ScanPage({ id }: { id: string }) {
           ) : (
             <span className="chip">{scan.stage === 'modeling' ? 'Blockout · 3D scan building…' : 'Blockout'}</span>
           )}
-          {source === 'scan' && scan.modelUrl && (
-            <button className="btn ghost small" onClick={() => setOrient((o) => (o + 1) % 4)} title="Rotate the scan if it came back sideways">
-              Rotate scan
+          <div className="row">
+            {source === 'scan' && scan.modelUrl && (
+              <button className="btn ghost small" onClick={() => setOrient((o) => (o + 1) % 4)} title="Rotate the scan if it came back sideways">
+                Flip scan
+              </button>
+            )}
+            <button className={`btn small ${spin ? 'primary' : 'ghost'}`} onClick={() => setSpin((v) => !v)} aria-pressed={spin}>
+              {spin ? 'Stop spin' : 'Spin'}
             </button>
-          )}
+          </div>
         </div>
-        {scan.stage === 'modeling' && <div className="viewer-progress" />}
+        {(scan.stage === 'analyzing' || scan.stage === 'modeling') && <LiveStatus scan={scan} />}
       </section>
 
       <StepsPanel
@@ -133,6 +141,7 @@ export default function ScanPage({ id }: { id: string }) {
         onStep={setStepIndex}
         selectedId={selectedId}
         modelError={scan.modelError}
+        writing={scan.stage === 'analyzing'}
         photo={<PhotoWithBoxes scan={scan} compact />}
       />
     </main>
@@ -140,6 +149,34 @@ export default function ScanPage({ id }: { id: string }) {
 }
 
 const formatMB = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`
+
+/** What's happening right now, over the 3D view: Gemini's thinking, then fal's progress. */
+function LiveStatus({ scan }: { scan: ScanView }) {
+  const p = scan.progress
+  const parts = scan.analysis?.parts.length ?? 0
+  let title: string
+  let detail: string | null = null
+  if (scan.stage === 'analyzing') {
+    title = p?.thought ?? (parts ? 'Building the block model…' : 'Looking at your photos…')
+    detail = parts ? `${parts} part${parts > 1 ? 's' : ''} found${p?.partsFinal ? ' · writing steps' : ''}` : null
+  } else {
+    const fal = p?.fal
+    if (fal?.status === 'IN_QUEUE') title = `3D scan queued${fal.queuePosition != null ? ` (#${fal.queuePosition + 1})` : ''}`
+    else if (fal?.status === 'IN_PROGRESS') title = 'Sculpting the 3D scan…'
+    else title = 'Starting the 3D scan…'
+    detail = fal?.log ?? 'The block model is ready to use meanwhile.'
+  }
+  return (
+    <div className="live-status" role="status">
+      <span className="spinner small" aria-hidden />
+      <div>
+        <strong>{title}</strong>
+        {detail && <small>{detail}</small>}
+      </div>
+      <div className="viewer-progress" />
+    </div>
+  )
+}
 
 function Progress({ label }: { label: string }) {
   return (

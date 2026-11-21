@@ -80,6 +80,16 @@ export interface ScanView {
   error: string | null
   /** 3D generation failed or was skipped; the blockout still works. */
   modelError: string | null
+  /** Live status while the scan runs. */
+  progress: ScanProgress | null
+}
+
+export interface ScanProgress {
+  /** Latest heading from Gemini's thought summary, e.g. "Identifying the fasteners". */
+  thought: string | null
+  /** Parts list is complete (Gemini is now writing steps). */
+  partsFinal: boolean
+  fal: { status: 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED'; queuePosition: number | null; log: string | null } | null
 }
 
 export interface ScanPhoto {

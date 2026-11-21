@@ -11,10 +11,12 @@ interface Props {
   onStep: (i: number) => void
   selectedId: string | null
   modelError: string | null
+  /** Gemini is still streaming the analysis. */
+  writing?: boolean
   photo: ReactNode
 }
 
-export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, onStep, selectedId, modelError, photo }: Props) {
+export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, onStep, selectedId, modelError, writing, photo }: Props) {
   const step = stepIndex >= 0 ? steps[stepIndex] : null
   const selected = selectedId ? analysis.parts.find((p) => p.id === selectedId) : null
   const partName = (id: string) => analysis.parts.find((p) => p.id === id)?.name ?? id
@@ -38,8 +40,10 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
         <button className="btn ghost" onClick={() => onStep(stepIndex - 1)} disabled={stepIndex < 0}>
           ← Back
         </button>
-        <span className="step-count">{stepIndex < 0 ? 'Overview' : `Step ${stepIndex + 1} of ${steps.length}`}</span>
-        <button className="btn primary" onClick={() => onStep(stepIndex + 1)} disabled={stepIndex >= last}>
+        <span className="step-count">
+          {stepIndex < 0 ? (writing ? `Overview · ${steps.length ? `${steps.length} steps so far` : 'writing steps…'}` : 'Overview') : `Step ${stepIndex + 1} of ${steps.length}`}
+        </span>
+        <button className="btn primary" onClick={() => onStep(stepIndex + 1)} disabled={stepIndex >= last || steps.length === 0}>
           {stepIndex < 0 ? 'Start →' : 'Next →'}
         </button>
       </div>

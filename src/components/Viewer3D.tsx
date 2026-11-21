@@ -1,6 +1,6 @@
 import { Edges, Grid, Html, OrbitControls, useGLTF } from '@react-three/drei'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { Component, Suspense, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
 import * as THREE from 'three'
 import { DIRECTION_VECTORS, explodeDistance, type PartState } from '../explode'
 import type { Analysis, Part } from '../shared/types'
@@ -15,6 +15,8 @@ interface ViewerProps {
   modelPartIds: string[]
   /** Quarter turns around X, to fix scans that come back lying on their side. */
   orient: number
+  /** Turntable: slowly orbit the model. The only mode that renders continuously. */
+  spin?: boolean
   selectedId: string | null
   onSelect: (id: string | null) => void
 }
@@ -72,9 +74,29 @@ export default function Viewer3D(props: ViewerProps) {
       ) : (
         blockout
       )}
-      <OrbitControls makeDefault target={[0, height / 2, 0]} enableDamping maxPolarAngle={Math.PI * 0.95} />
+      <OrbitControls
+        makeDefault
+        target={[0, height / 2, 0]}
+        enableDamping
+        autoRotate={!!props.spin}
+        autoRotateSpeed={1.6}
+        maxPolarAngle={Math.PI * 0.95}
+      />
+      <SpinDriver on={!!props.spin} />
     </Canvas>
   )
+}
+
+/** With frameloop="demand", keep requesting frames only while the turntable is on. */
+function SpinDriver({ on }: { on: boolean }) {
+  const invalidate = useThree((s) => s.invalidate)
+  useEffect(() => {
+    if (on) invalidate()
+  }, [on, invalidate])
+  useFrame(() => {
+    if (on) invalidate()
+  })
+  return null
 }
 
 // ---------------- Blockout: Gemini's simple-shape model ----------------
@@ -125,6 +147,14 @@ function BlockoutPart(props: {
     [part.position, dir, distance, state.offset],
   )
   const targetOpacity = state.faded ? 0.12 : ghost ? 0.35 : 1
+
+  // New parts drop in from above and fade in, so the model visibly builds as Gemini streams it.
+  useLayoutEffect(() => {
+    if (!group.current || !mat.current) return
+    group.current.position.y += Math.max(...part.size, 10) * 1.5
+    mat.current.opacity = 0
+    invalidate()
+  }, [])
 
   // Highlight changes are instant, so set them here instead of every frame.
   useEffect(() => {
