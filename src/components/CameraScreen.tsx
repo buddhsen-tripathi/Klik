@@ -29,7 +29,8 @@ interface Captured extends Shot {
 }
 
 export default function CameraScreen({ onUseLibrary }: { onUseLibrary: () => void }) {
-  const { videoRef, status } = useCamera()
+  const { videoRef, status, facing, canFlip, flip } = useCamera()
+  const mirrored = facing === 'user'
   const stageRef = useRef<HTMLDivElement>(null)
   const [stageSize, setStageSize] = useState({ w: 0, h: 0 })
   const [detection, setDetection] = useState<Identification | null>(null)
@@ -193,8 +194,8 @@ export default function CameraScreen({ onUseLibrary }: { onUseLibrary: () => voi
   return (
     <main className="camera">
       <div className="camera-stage" ref={stageRef}>
-        <video ref={videoRef} playsInline muted autoPlay />
-        {found?.box2d && <DetectionOverlay det={found} video={videoRef.current} stage={stageSize} />}
+        <video ref={videoRef} playsInline muted autoPlay className={mirrored ? 'mirrored' : ''} />
+        {found?.box2d && <DetectionOverlay det={found} video={videoRef.current} stage={stageSize} mirrored={mirrored} />}
         <div key={flash} className={flash ? 'shutter-flash' : ''} />
 
         <div className="camera-top">
@@ -204,9 +205,26 @@ export default function CameraScreen({ onUseLibrary }: { onUseLibrary: () => voi
             </span>
             Assemble on the Go
           </span>
-          <button className="link-btn" onClick={onUseLibrary}>
-            Upload photos
-          </button>
+          <div className="row">
+            {canFlip && (
+              <button
+                className="icon-btn"
+                aria-label={facing === 'user' ? 'Switch to back camera' : 'Switch to front camera'}
+                onClick={() => {
+                  // New camera, new view: forget the old detection and shot baseline.
+                  setDetection(null)
+                  loop.current.lastIdSig = null
+                  loop.current.lastShotSig = null
+                  flip()
+                }}
+              >
+                ⟲
+              </button>
+            )}
+            <button className="link-btn" onClick={onUseLibrary}>
+              Upload photos
+            </button>
+          </div>
         </div>
 
         <div className="camera-guide">
@@ -252,7 +270,17 @@ export default function CameraScreen({ onUseLibrary }: { onUseLibrary: () => voi
 }
 
 /** Box + floating "3D hover" tag over the identified item. */
-function DetectionOverlay({ det, video, stage }: { det: Identification; video: HTMLVideoElement | null; stage: { w: number; h: number } }) {
+function DetectionOverlay({
+  det,
+  video,
+  stage,
+  mirrored,
+}: {
+  det: Identification
+  video: HTMLVideoElement | null
+  stage: { w: number; h: number }
+  mirrored: boolean
+}) {
   if (!video?.videoWidth || !stage.w || !det.box2d) return null
   // object-fit: cover crops the video; map 0-1000 frame coords onto the visible area.
   const scale = Math.max(stage.w / video.videoWidth, stage.h / video.videoHeight)
@@ -260,7 +288,10 @@ function DetectionOverlay({ det, video, stage }: { det: Identification; video: H
   const dh = video.videoHeight * scale
   const ox = (stage.w - dw) / 2
   const oy = (stage.h - dh) / 2
-  const [ymin, xmin, ymax, xmax] = det.box2d
+  const [ymin, x0, ymax, x1] = det.box2d
+  // Front camera preview is mirrored, so mirror the box too.
+  const xmin = mirrored ? 1000 - x1 : x0
+  const xmax = mirrored ? 1000 - x0 : x1
   const left = Math.max(8, ox + (xmin / 1000) * dw)
   const top = Math.max(8, oy + (ymin / 1000) * dh)
   const right = Math.min(stage.w - 8, ox + (xmax / 1000) * dw)

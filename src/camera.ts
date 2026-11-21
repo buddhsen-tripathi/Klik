@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 export type CameraStatus = 'starting' | 'live' | 'denied' | 'unsupported' | 'paused'
+export type Facing = 'environment' | 'user'
 
 /** Live camera access needs a secure context (HTTPS or localhost). */
 export const cameraSupported = () => typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && window.isSecureContext
@@ -12,6 +13,8 @@ export const cameraSupported = () => typeof navigator !== 'undefined' && !!navig
 export function useCamera() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [status, setStatus] = useState<CameraStatus>(cameraSupported() ? 'starting' : 'unsupported')
+  const [facing, setFacing] = useState<Facing>('environment')
+  const [canFlip, setCanFlip] = useState(false)
 
   useEffect(() => {
     if (!cameraSupported()) return
@@ -28,7 +31,7 @@ export function useCamera() {
       try {
         const s = await navigator.mediaDevices.getUserMedia({
           audio: false,
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
         })
         if (cancelled || document.hidden) return s.getTracks().forEach((t) => t.stop())
         stream = s
@@ -38,6 +41,11 @@ export function useCamera() {
           await v.play().catch(() => {})
         }
         setStatus('live')
+        // Device labels/count are only reliable after permission is granted.
+        navigator.mediaDevices
+          .enumerateDevices()
+          .then((d) => setCanFlip(d.filter((x) => x.kind === 'videoinput').length > 1))
+          .catch(() => {})
       } catch (err) {
         setStatus((err as DOMException)?.name === 'NotAllowedError' ? 'denied' : 'unsupported')
       }
@@ -56,9 +64,10 @@ export function useCamera() {
       document.removeEventListener('visibilitychange', onVisibility)
       stop()
     }
-  }, [])
+  }, [facing])
 
-  return { videoRef, status }
+  const flip = () => setFacing((f) => (f === 'environment' ? 'user' : 'environment'))
+  return { videoRef, status, facing, canFlip, flip }
 }
 
 // ---------- cheap motion / change detection ----------

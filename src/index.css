@@ -595,6 +595,22 @@ details.card summary {
   object-fit: cover;
 }
 
+.camera-stage video.mirrored {
+  transform: scaleX(-1);
+}
+
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgb(255 255 255 / 0.4);
+  background: rgb(0 0 0 / 0.35);
+  color: #fff;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
 /* Live status over the 3D view while Gemini streams / fal builds. */
 .live-status {
   position: absolute;
