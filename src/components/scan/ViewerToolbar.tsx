@@ -42,21 +42,25 @@ export default function ViewerToolbar(props: {
       )}
       <div className="row">
         {source === 'scan' && hasScan && (
-          <button className="btn ghost small" onClick={props.onFlip} title="Rotate the scan if it came back sideways">
-            Flip scan
+          <button className="btn ghost small bar-btn" onClick={props.onFlip} title="Flip scan: rotate it if it came back sideways" aria-label="Flip scan">
+            <span aria-hidden className="bar-icon-text">90°</span>
+            <span className="bar-label">Flip scan</span>
           </button>
         )}
-        <button className={`btn small ${spin ? 'primary' : 'ghost'}`} onClick={props.onSpin} aria-pressed={spin}>
-          {spin ? 'Stop spin' : 'Spin'}
+        <button className={`btn small bar-btn ${spin ? 'primary' : 'ghost'}`} onClick={props.onSpin} aria-pressed={spin} aria-label={spin ? 'Stop spin' : 'Spin'} title={spin ? 'Stop spin' : 'Spin'}>
+          <span aria-hidden>↻</span>
+          <span className="bar-label">{spin ? 'Stop spin' : 'Spin'}</span>
         </button>
         {props.canWatch && (
           <button
-            className={`btn small ${watching ? 'primary' : 'ghost'}`}
+            className={`btn small bar-btn ${watching ? 'primary' : 'ghost'}`}
             aria-pressed={watching}
-            title="Hands-free: the camera checks each step and moves on when it's done"
+            aria-label="Watch (hands-free)"
+            title="Watch: the camera checks each step and moves on when it's done"
             onClick={props.onWatch}
           >
-            📷 Watch
+            <span aria-hidden>📷</span>
+            <span className="bar-label">Watch</span>
           </button>
         )}
       </div>

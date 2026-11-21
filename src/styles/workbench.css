@@ -29,6 +29,48 @@
   pointer-events: auto;
 }
 
+/* Never squeeze labels onto two lines; if it still doesn't fit, the actions wrap to a second row. */
+.viewer-bar {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.viewer-bar .btn,
+.viewer-bar .segmented button,
+.viewer-bar .chip {
+  white-space: nowrap;
+}
+.viewer-bar > .row {
+  margin-left: auto;
+  flex-wrap: nowrap;
+}
+.bar-icon-text {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.bar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Phones: Flip / Spin / Watch become round icon buttons (labels stay as tooltips + aria-labels). */
+@media (max-width: 520px) {
+  .bar-btn {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    justify-content: center;
+    font-size: 17px;
+  }
+  .bar-btn .bar-label {
+    display: none;
+  }
+  .viewer-bar > .row {
+    gap: 6px;
+  }
+}
+
 .viewer-bar .btn.ghost {
   background: var(--surface);
 }
