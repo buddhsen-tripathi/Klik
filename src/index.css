@@ -1335,3 +1335,14 @@ details.card summary {
   font-size: 0.85rem;
   text-decoration: underline;
 }
+
+/* Latency waterfall ("Where the time went") */
+.waterfall { display: grid; gap: 3px; font-size: 12px; margin-top: 6px; }
+.wf-row { display: grid; grid-template-columns: minmax(0, 9.5em) 1fr 3.2em; gap: 8px; align-items: center; }
+.wf-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted, #8b8f98); }
+.wf-track { position: relative; height: 8px; background: color-mix(in srgb, currentColor 8%, transparent); border-radius: 4px; }
+.wf-bar { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: #4f8cff; }
+.wf-row.total .wf-bar { background: #ff9f1c; }
+.wf-row.total .wf-name { font-weight: 600; color: inherit; }
+.wf-row.failed .wf-bar { background: #e5484d; }
+.wf-time { text-align: right; font-variant-numeric: tabular-nums; }

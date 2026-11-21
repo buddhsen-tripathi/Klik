@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Mode } from '../explode'
-import type { Analysis, Step } from '../shared/types'
+import type { Analysis, Step, Timing } from '../shared/types'
+import Waterfall from './Waterfall'
 
 interface Props {
   analysis: Analysis
@@ -14,9 +15,11 @@ interface Props {
   /** Gemini is still streaming the analysis. */
   writing?: boolean
   photo: ReactNode
+  /** Latency waterfall for this scan. */
+  timings?: Timing[]
 }
 
-export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, onStep, selectedId, modelError, writing, photo }: Props) {
+export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, onStep, selectedId, modelError, writing, photo, timings = [] }: Props) {
   const step = stepIndex >= 0 ? steps[stepIndex] : null
   const selected = selectedId ? analysis.parts.find((p) => p.id === selectedId) : null
   const partName = (id: string) => analysis.parts.find((p) => p.id === id)?.name ?? id
@@ -210,6 +213,12 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
                 </li>
               ))}
             </ul>
+          </>
+        )}
+        {timings.length > 0 && (
+          <>
+            <h3>Where the time went</h3>
+            <Waterfall timings={timings} />
           </>
         )}
       </details>

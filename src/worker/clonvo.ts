@@ -7,16 +7,59 @@ import type { Source } from '../shared/types'
  */
 const API = 'https://api.clonvo.com/v1/tools'
 
-async function callTool<T>(apiKey: string, tool: string, args: object, timeoutMs: number): Promise<T> {
-  const res = await fetch(`${API}/${tool}`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ arguments: args }),
-    signal: AbortSignal.timeout(timeoutMs),
-  })
-  const body = (await res.json().catch(() => null)) as any
-  if (!res.ok) throw new Error(`Clonvo ${tool} ${res.status}: ${body?.error?.message ?? 'request failed'}`)
-  return body.result as T
+/** One finished tool call, for the latency waterfall. generationId can be looked up in Clonvo
+ *  (GET /v1/generation?id=…) for its server-side latency and provider. */
+export interface ToolTiming {
+  name: string
+  start: number
+  end: number
+  generationId: string | null
+  provider: string | null
+  cached: boolean
+  ok: boolean
+}
+
+async function callTool<T>(
+  apiKey: string,
+  tool: string,
+  args: object,
+  timeoutMs: number,
+  label: string,
+  onTiming?: (t: ToolTiming) => void,
+): Promise<T> {
+  const start = Date.now()
+  let body: any = null
+  let generationId: string | null = null
+  let ok = false
+  try {
+    const res = await fetch(`${API}/${tool}`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+        // Groups these calls in Clonvo's Activity view.
+        'x-title': 'Assemble on the Go',
+        'http-referer': 'https://assemble-on-the-go.workers.dev',
+      },
+      body: JSON.stringify({ arguments: args }),
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+    generationId = res.headers.get('x-clonvo-generation-id')
+    body = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(`Clonvo ${tool} ${res.status}: ${body?.error?.message ?? 'request failed'}`)
+    ok = true
+    return body.result as T
+  } finally {
+    onTiming?.({
+      name: label,
+      start,
+      end: Date.now(),
+      generationId: generationId ?? body?.id ?? null,
+      provider: body?.provider ?? null,
+      cached: body?.cached === true,
+      ok,
+    })
+  }
 }
 
 interface SearchResult {
@@ -28,7 +71,7 @@ interface AnswerResult {
 }
 
 export interface ResearchFindings {
-  /** Page text and the cited answer, labelled with [n] source numbers. */
+  /** Page text and/or the cited answer, labelled with [n] source numbers. */
   notes: string
   sources: Source[]
 }
@@ -37,42 +80,55 @@ const PER_PAGE_CHARS = 6_000
 const MAX_NOTES = 30_000
 
 /**
- * Run the searches (manual, teardown/parts list, ...) and one cited spec question in parallel.
- * Individual calls may fail; whatever came back is used. Throws only if everything failed.
+ * Fast path (~2 s): one cited answer about dimensions and fasteners. This is all the planner
+ * waits for; the slower page search runs alongside the planner.
  */
-export async function researchObject(apiKey: string, queries: string[], specQuestion: string): Promise<ResearchFindings> {
-  const searches = queries.slice(0, 3).map((query) =>
-    callTool<SearchResult>(apiKey, 'web_search', { query, max_results: 3, include_content: true, max_content_chars: PER_PAGE_CHARS }, 30_000),
-  )
-  const answer = specQuestion ? callTool<AnswerResult>(apiKey, 'web_answer', { query: specQuestion }, 30_000) : Promise.reject(new Error('no question'))
-  const [answerResult, ...searchResults] = await Promise.allSettled([answer, ...searches])
-
+export async function answerSpecs(apiKey: string, question: string, onTiming?: (t: ToolTiming) => void): Promise<ResearchFindings> {
+  const r = await callTool<AnswerResult>(apiKey, 'web_answer', { query: question }, 30_000, 'clonvo.web_answer', onTiming)
   const sources: Source[] = []
-  const indexOf = (url: string, title: string) => {
-    let i = sources.findIndex((s) => s.url === url)
-    if (i < 0) i = sources.push({ title: title || url, url }) - 1
-    return i + 1
-  }
+  for (const c of r.citations ?? []) if (c.url && !sources.some((s) => s.url === c.url)) sources.push({ title: c.title || c.url, url: c.url })
+  const refs = sources.map((_, i) => `[${i + 1}]`).join('')
+  return { notes: r.answer ? `CITED ANSWER to "${question}" ${refs}\n${r.answer.trim()}\n\n` : '', sources }
+}
 
+/**
+ * Slow path (~15-20 s): manual / teardown searches with page content, in parallel. Failed
+ * searches are skipped; throws only if all of them failed.
+ */
+export async function searchPages(
+  apiKey: string,
+  queries: string[],
+  onTiming?: (t: ToolTiming) => void,
+  startIndex = 0,
+): Promise<ResearchFindings> {
+  const results = await Promise.allSettled(
+    queries.slice(0, 3).map((query, i) =>
+      callTool<SearchResult>(
+        apiKey,
+        'web_search',
+        { query, max_results: 3, include_content: true, max_content_chars: PER_PAGE_CHARS },
+        30_000,
+        `clonvo.web_search.${i + 1}`,
+        onTiming,
+      ),
+    ),
+  )
+  const sources: Source[] = []
   let notes = ''
-  if (answerResult.status === 'fulfilled' && answerResult.value.answer) {
-    const refs = (answerResult.value.citations ?? []).map((c) => `[${indexOf(c.url, c.title)}]`).join('')
-    notes += `CITED ANSWER to "${specQuestion}" ${refs}\n${answerResult.value.answer.trim()}\n\n`
-  }
   const seen = new Set<string>()
-  for (const r of searchResults) {
+  for (const r of results) {
     if (r.status !== 'fulfilled') continue
     for (const hit of r.value.results ?? []) {
       if (!hit.url || seen.has(hit.url)) continue
       seen.add(hit.url)
       const text = (hit.content || hit.snippet || '').replace(/\n{3,}/g, '\n\n').trim()
       if (!text) continue
-      notes += `[${indexOf(hit.url, hit.title)}] ${hit.title} (${hit.url})\n${text}\n\n`
+      sources.push({ title: hit.title || hit.url, url: hit.url })
+      notes += `[${startIndex + sources.length}] ${hit.title} (${hit.url})\n${text}\n\n`
       if (notes.length > MAX_NOTES) break
     }
   }
-
-  const failures = [answerResult, ...searchResults].filter((r) => r.status === 'rejected') as PromiseRejectedResult[]
-  if (!notes && failures.length) throw failures[0].reason
+  const failed = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[]
+  if (!notes && failed.length === results.length && failed.length) throw failed[0].reason
   return { notes: notes.slice(0, MAX_NOTES), sources }
 }

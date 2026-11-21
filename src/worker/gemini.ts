@@ -122,7 +122,7 @@ function triageText(t: Triage | null): string {
   return `${state}\n${groups}\n`
 }
 
-function buildPrompt(hint: string | null, photoCount: number, ref: Reference | null, triage: Triage | null = null): string {
+function buildPrompt(hint: string | null, photoCount: number, ref: Reference | null, triage: Triage | null = null, specFacts: string | null = null): string {
   const photos =
     photoCount > 1
       ? `You get ${photoCount} photos of the SAME object from different angles (photo 0 first). Use all of them to work out the parts, including ones only visible from some angles.
@@ -165,7 +165,15 @@ How to use it:
 - ${ref.match === 'exact' ? 'It is this exact product: use the official dimensions (dimensionsSource="docs") and scale the blockout to them.' : 'It is a SIMILAR product: use it as guidance but trust the photos for sizes (dimensionsSource="estimate" unless the size clearly matches).'}
 - Take fastener specs and quantities from the hardware list${ref.match === 'exact' ? '' : ' where they plausibly apply'}; name components the way the documents do.
 - The photos win over the documents for what is actually there; mention conflicts in "assumptions".`
-    : `
+    : specFacts
+      ? `
+SPEC FACTS (a cited web answer about this product's dimensions and fasteners)
+${specFacts}
+How to use it:
+- If it clearly describes THIS product (same brand/model, or obviously the same thing), use its dimensions (dimensionsSource="docs") and its fastener types, sizes and counts (one part per fastener type).
+- If it is about a different model or the full-size original of a toy, use it only as a hint (dimensionsSource="estimate").
+- The photos win over the text for what is actually there; mention conflicts in "assumptions".`
+      : `
 No documentation was found: estimate sizes (dimensionsSource="estimate") and give fastener specs only when you can tell from the photos (else spec=null).`
 }`
 }
@@ -345,6 +353,8 @@ export async function analyzePhotos(opts: {
   hint: string | null
   reference: Reference | null
   triage?: Triage | null
+  /** Fast cited answer (dimensions + fasteners), used while the full reference is still being built. */
+  specFacts?: string | null
   thinkingLevel: ThinkingLevel | null
   onPartial?: (partial: Analysis, partsFinal: boolean) => void
   onThought?: (chunk: string) => void
@@ -353,7 +363,7 @@ export async function analyzePhotos(opts: {
     apiKey: opts.apiKey,
     model: opts.model,
     images: opts.images,
-    text: buildPrompt(opts.hint, opts.images.length, opts.reference, opts.triage ?? null),
+    text: buildPrompt(opts.hint, opts.images.length, opts.reference, opts.triage ?? null, opts.specFacts ?? null),
     schema: ANALYSIS_SCHEMA,
     thinkingLevel: opts.thinkingLevel,
     onThought: (c) => opts.onThought?.(c),
