@@ -2,6 +2,7 @@ import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloud
 import { NonRetryableError } from 'cloudflare:workflows'
 import type { Analysis, ModelFile, ObjectIdentity, Part, Reference, ScanProgress, Step, Timing, Triage } from '../shared/types'
 import { answerSpecs, searchPages, type ResearchFindings, type ToolTiming } from './clonvo'
+import { exportTrace, traceIdFor } from './otel'
 import { triage } from './decisions'
 import { analyzePhotos, buildReference, identifyObject, writeGroupSteps, type ThinkingLevel } from './gemini'
 import { getFalResult, getFalStatus, layoutsOf, submitSam3d, type FalJob, type FalStatus } from './fal'
@@ -98,7 +99,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
       }
     }
     const markTool = (t: ToolTiming) =>
-      mark({ name: t.name, start: t.start, end: t.end, generationId: t.generationId, note: [t.provider, t.cached ? 'cached' : '', t.ok ? '' : 'failed'].filter(Boolean).join(' · ') || undefined })
+      mark({ name: t.name, start: t.start, end: t.end, generationId: t.generationId, spanId: t.spanId, note: [t.provider, t.cached ? 'cached' : '', t.ok ? '' : 'failed'].filter(Boolean).join(' · ') || undefined })
 
     const photoRows = async () => {
       const { results } = await db
@@ -163,10 +164,29 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
     const thinking = THINKING_LEVELS.find((l) => l === this.env.ANALYSIS_THINKING) ?? null
     const progress: ScanProgress = { thought: null, partsFinal: false, fal: null, phase: 'identifying', identity: null, research: null, agents: [] }
     const saveProgress = () => setFields({ progress: JSON.stringify(progress) })
+    /** Send the whole run to Clonvo Traces (one trace per scan, built from the waterfall). */
+    const sendTrace = (ok: boolean, note?: string) =>
+      step.do('export-trace', async () => {
+        if (!this.env.CLONVO_API_KEY) return
+        const row = await db.prepare('SELECT timings, created_at FROM scans WHERE id = ?').bind(scanId).first<{ timings: string | null; created_at: number }>()
+        const timings: Timing[] = row?.timings ? JSON.parse(row.timings) : []
+        await exportTrace({
+          apiKey: this.env.CLONVO_API_KEY,
+          scanId,
+          name: 'scan',
+          start: row?.created_at ?? Math.min(...timings.map((t) => t.start), Date.now()),
+          end: Math.max(...timings.map((t) => t.end), Date.now()),
+          timings,
+          model: this.env.GEMINI_MODEL,
+          attributes: { 'scan.result': note },
+          ok,
+        })
+      })
     const fail = async (err: unknown) => {
       await step.do('mark-failed', async () => {
         await setFields({ stage: 'failed', error: String((err as Error)?.message ?? err) })
       })
+      await sendTrace(false, String((err as Error)?.message ?? err).slice(0, 200))
     }
 
     // In a step so a replay (e.g. after a restart during 3D polling) doesn't reset the stage.
@@ -214,7 +234,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
       await saveProgress()
       specFacts = await step
         .do('research-answer', { retries: { limit: 1, delay: '2 seconds' }, timeout: '1 minute' }, () =>
-          answerSpecs(this.env.CLONVO_API_KEY, identity.specQuestion, markTool),
+          answerSpecs(this.env.CLONVO_API_KEY, identity.specQuestion, markTool, traceIdFor(scanId)),
         )
         .catch((err) => {
           console.warn('spec answer failed', err)
@@ -230,7 +250,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
     const referenceP: Promise<Reference | null> = research
       ? step
           .do('research-pages', { retries: { limit: 1, delay: '5 seconds' }, timeout: '3 minutes' }, async () => {
-            const pages = await searchPages(this.env.CLONVO_API_KEY, identity.queries, markTool, specFacts?.sources.length ?? 0).catch((err) => {
+            const pages = await searchPages(this.env.CLONVO_API_KEY, identity.queries, markTool, specFacts?.sources.length ?? 0, traceIdFor(scanId)).catch((err) => {
               console.warn('page search failed', err)
               return null
             })
@@ -515,10 +535,12 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
         })
         await mark({ name: 'model ready', start: createdAt, end: Date.now(), note: `${files.length}/${jobs.length} parts` })
       })
+      await sendTrace(true, 'done')
     } catch (err) {
       await step.do('mark-model-failed', async () => {
         await setFields({ stage: 'done', model_error: `3D model failed: ${String((err as Error)?.message ?? err)}` })
       })
+      await sendTrace(false, '3D model failed')
     }
   }
 }

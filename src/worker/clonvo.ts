@@ -5,6 +5,8 @@ import type { Source } from '../shared/types'
  * cited answers, scraping and sandboxes. Used to find manuals, teardown guides and
  * spec sheets so dimensions and fasteners come from documents, not guesses.
  */
+import { newSpanId, traceparent } from './otel'
+
 const API = 'https://api.clonvo.com/v1/tools'
 
 /** One finished tool call, for the latency waterfall. generationId can be looked up in Clonvo
@@ -17,6 +19,7 @@ export interface ToolTiming {
   provider: string | null
   cached: boolean
   ok: boolean
+  spanId: string
 }
 
 async function callTool<T>(
@@ -26,8 +29,10 @@ async function callTool<T>(
   timeoutMs: number,
   label: string,
   onTiming?: (t: ToolTiming) => void,
+  traceId?: string,
 ): Promise<T> {
   const start = Date.now()
+  const spanId = newSpanId()
   let body: any = null
   let generationId: string | null = null
   let ok = false
@@ -40,6 +45,8 @@ async function callTool<T>(
         // Groups these calls in Clonvo's Activity view.
         'x-title': 'Assemble on the Go',
         'http-referer': 'https://assemble-on-the-go.workers.dev',
+        // Clonvo Traces: nest this gateway call under our span for it (see otel.ts).
+        ...(traceId ? { traceparent: traceparent(traceId, spanId) } : {}),
       },
       body: JSON.stringify({ arguments: args }),
       signal: AbortSignal.timeout(timeoutMs),
@@ -58,6 +65,7 @@ async function callTool<T>(
       provider: body?.provider ?? null,
       cached: body?.cached === true,
       ok,
+      spanId,
     })
   }
 }
@@ -83,8 +91,8 @@ const MAX_NOTES = 30_000
  * Fast path (~2 s): one cited answer about dimensions and fasteners. This is all the planner
  * waits for; the slower page search runs alongside the planner.
  */
-export async function answerSpecs(apiKey: string, question: string, onTiming?: (t: ToolTiming) => void): Promise<ResearchFindings> {
-  const r = await callTool<AnswerResult>(apiKey, 'web_answer', { query: question }, 30_000, 'clonvo.web_answer', onTiming)
+export async function answerSpecs(apiKey: string, question: string, onTiming?: (t: ToolTiming) => void, traceId?: string): Promise<ResearchFindings> {
+  const r = await callTool<AnswerResult>(apiKey, 'web_answer', { query: question }, 30_000, 'clonvo.web_answer', onTiming, traceId)
   const sources: Source[] = []
   for (const c of r.citations ?? []) if (c.url && !sources.some((s) => s.url === c.url)) sources.push({ title: c.title || c.url, url: c.url })
   const refs = sources.map((_, i) => `[${i + 1}]`).join('')
@@ -100,6 +108,7 @@ export async function searchPages(
   queries: string[],
   onTiming?: (t: ToolTiming) => void,
   startIndex = 0,
+  traceId?: string,
 ): Promise<ResearchFindings> {
   const results = await Promise.allSettled(
     queries.slice(0, 3).map((query, i) =>
@@ -110,6 +119,7 @@ export async function searchPages(
         30_000,
         `clonvo.web_search.${i + 1}`,
         onTiming,
+        traceId,
       ),
     ),
   )

@@ -180,6 +180,8 @@ export interface Timing {
   end: number
   /** Clonvo generation id: look it up with GET https://api.clonvo.com/v1/generation?id=… */
   generationId?: string | null
+  /** OpenTelemetry span id (Clonvo tool calls nest their gateway span under it). */
+  spanId?: string
   note?: string
 }
 
