@@ -14,7 +14,9 @@ export default function StepProgress({ stepIndex, count, onStep, fixes = 0 }: { 
       <ol className="step-progress-bar" aria-label="Steps">
         {Array.from({ length: count }, (_, i) => (
           <li key={i} className={`${i < stepIndex ? 'done' : i === stepIndex ? 'current' : ''}${i < fixes ? ' fix' : ''}`}>
-            <button onClick={() => onStep(i)} aria-label={`Step ${i + 1}`} aria-current={i === stepIndex ? 'step' : undefined} />
+            <button onClick={() => onStep(i)} aria-label={`Step ${i + 1}`} aria-current={i === stepIndex ? 'step' : undefined}>
+              <span />
+            </button>
           </li>
         ))}
       </ol>

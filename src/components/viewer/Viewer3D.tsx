@@ -74,7 +74,7 @@ export default function Viewer3D(props: ViewerProps) {
       />
       <SpinDriver on={!!props.spin} />
       {/* The scanned model frames its own (real-size) tray layout. */}
-      {!showingScan && <AutoFrame box={box} frameKey={frameKey} />}
+      {!showingScan && <AutoFrame box={box} frameKey={frameKey} focus={props.focus} />}
     </Canvas>
   )
 }

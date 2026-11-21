@@ -6,7 +6,7 @@ import { qty } from './format'
 import StepRevision from './StepRevision'
 
 /** The current step: what to do, which parts, which screws and tools. */
-export default function StepCard({ step, mode, analysis }: { step: Step; mode: Mode; analysis: Analysis }) {
+export default function StepCard({ step, mode, analysis, onFocusPart }: { step: Step; mode: Mode; analysis: Analysis; onFocusPart?: (id: string) => void }) {
   const partName = (id: string) => analysis.parts.find((p) => p.id === id)?.name ?? id
   const fasteners = analysis.parts.filter((p) => p.kind === 'fastener' && step.partIds.includes(p.id))
   return (
@@ -16,11 +16,23 @@ export default function StepCard({ step, mode, analysis }: { step: Step; mode: M
       <StepRevision revision={step.revision} />
       <p className="instruction">{mode === 'disassemble' ? step.disassembly : step.assembly}</p>
       <p className="parts-line">
-        <strong>Parts:</strong> {step.partIds.map(partName).join(', ')}
+        <strong>Parts:</strong>{' '}
+        {step.partIds.map((id, i) => (
+          <span key={id}>
+            {i > 0 && ', '}
+            {onFocusPart ? (
+              <button className="part-link" onClick={() => onFocusPart(id)}>
+                {partName(id)}
+              </button>
+            ) : (
+              partName(id)
+            )}
+          </span>
+        ))}
       </p>
       <ChipRow empty={fasteners.length === 0}>
         {fasteners.map((f) => (
-          <Chip key={f.id} icon={<Bolt aria-hidden />} variant="hardware">
+          <Chip key={f.id} icon={<Bolt aria-hidden />} variant="hardware" onClick={onFocusPart && (() => onFocusPart(f.id))}>
             {qty(f)}
             {f.spec ?? f.name}
           </Chip>

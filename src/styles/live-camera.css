@@ -346,8 +346,8 @@
   align-items: center;
 }
 
-.toggle,
-.done {
+.camera-buttons .toggle,
+.camera-buttons .done {
   justify-self: start;
   min-height: 44px;
   padding: 8px 16px;
@@ -359,23 +359,23 @@
   cursor: pointer;
 }
 
-.toggle.on {
+.camera-buttons .toggle.on {
   background: #fff;
   color: #000;
 }
 
-.done {
+.camera-buttons .done {
   justify-self: end;
 }
 
-.done.ready {
+.camera-buttons .done.ready {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-text);
 }
 
-.toggle:disabled,
-.done:disabled {
+.camera-buttons .toggle:disabled,
+.camera-buttons .done:disabled {
   opacity: 0.4;
   cursor: default;
 }

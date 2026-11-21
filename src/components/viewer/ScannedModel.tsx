@@ -14,6 +14,9 @@ import type { SizeCheck, ViewerProps } from './types'
 
 /** SAM 3D meshes (one file per parallel job), each placed where it was in the photo, one node per part. */
 type StdMat = THREE.MeshStandardMaterial
+// Parts not in focus are darkened (they stay solid: see-through textured scans look like an X-ray).
+const DIMMED = new THREE.Color(0.55, 0.55, 0.55)
+const PULSE_MS = 1800
 
 export default function ScannedModel(props: ViewerProps) {
   const { analysis, states, orient, selectedId, onSelect } = props
@@ -62,6 +65,7 @@ export default function ScannedModel(props: ViewerProps) {
           const copies = splitInstances(holder, quantity(file.partIds[k]))
           copies?.forEach((c) => c.traverse((o) => (o as THREE.Mesh).isMesh && geometries.push((o as THREE.Mesh).geometry)))
           for (const obj of copies ?? [holder]) {
+            obj.userData.partId = file.partIds[k]
             root.add(obj)
             objects.push(obj)
             partIds.push(file.partIds[k])
@@ -72,6 +76,7 @@ export default function ScannedModel(props: ViewerProps) {
         root.add(scene)
         objects.push(...nodes)
         partIds.push(...file.partIds.slice(0, nodes.length))
+        nodes.forEach((n, k) => (n.userData.partId = file.partIds[k]))
       }
     })
     const split = partIds.length > 1 && objects.length === partIds.length
@@ -216,6 +221,8 @@ export default function ScannedModel(props: ViewerProps) {
   }, [tray, states, modelPartIds, analysis.parts])
 
   // Per-node targets are recomputed only when the step, selection or orientation changes.
+  // While a step or a part is in focus, everything else still on the object is dimmed.
+  const focusing = selectedId != null || [...states.values()].some((s) => s.active)
   const targets = useMemo(() => {
     if (!prepared.split || !tray) return []
     const { root } = prepared
@@ -242,30 +249,45 @@ export default function ScannedModel(props: ViewerProps) {
         .divideScalar(fit.scale)
         .applyQuaternion(tmp.q.invert())
         .divideScalar(tmp.s.x || 1)
+      const highlight = state.active || selectedId === part?.id
       return {
         position: prepared.bases[i].clone().add(tmp.v),
         opacity: 1,
-        highlight: state.active || selectedId === part?.id,
+        dim: focusing && !highlight && !state.tray,
+        highlight,
         active: state.active,
       }
     })
-  }, [prepared, states, selectedId, byId, modelPartIds, analysis, tmp, fit, tray])
+  }, [prepared, states, selectedId, byId, modelPartIds, analysis, tmp, fit, tray, focusing])
 
+  // The step's parts pulse a few times when it starts, then glow steadily (no endless render loop).
+  const pulseUntil = useRef(0)
   useEffect(() => {
     targets.forEach((t, i) => {
       for (const m of prepared.materials[i]) {
         if (!m.emissive) continue
         m.emissive.copy(t.highlight ? ACTIVE_COLOR : BLACK)
         m.emissiveIntensity = t.active ? 0.35 : t.highlight ? 0.2 : 0
+        m.userData.color ??= m.color.clone()
+        m.color.copy(m.userData.color as THREE.Color)
+        if (t.dim) m.color.multiply(DIMMED)
       }
     })
+    if (targets.some((t) => t.active)) pulseUntil.current = performance.now() + PULSE_MS
     invalidate()
   }, [targets, prepared, invalidate])
 
-  useFrame((_, dt) => {
+  useFrame((state, dt) => {
     if (!targets.length) return
     const k = 1 - Math.exp(-dt * EASE)
     let moving = false
+    const pulsing = performance.now() < pulseUntil.current
+    if (pulsing || pulseUntil.current) {
+      const glow = pulsing ? 0.15 + 0.45 * (0.5 - 0.5 * Math.cos(state.clock.elapsedTime * 9)) : 0.35
+      targets.forEach((t, i) => t.active && prepared.materials[i].forEach((m) => m.emissive && (m.emissiveIntensity = glow)))
+      if (pulsing) moving = true
+      else pulseUntil.current = 0
+    }
     prepared.objects.forEach((obj, i) => {
       const t = targets[i]
       obj.position.lerp(t.position, k)
@@ -310,7 +332,7 @@ export default function ScannedModel(props: ViewerProps) {
       <group position={fit.position} scale={fit.scale}>
         <primitive object={prepared.root} onClick={click} />
       </group>
-      {frame && <AutoFrame box={frame.box} frameKey={frame.frameKey} />}
+      {frame && <AutoFrame box={frame.box} frameKey={frame.frameKey} focus={props.focus} />}
       {prepared.split && hidden.size > 0 && <BlockoutModel {...props} ghost only={hidden} traySlots={tray?.blockSlots} references={references} />}
     </>
   )

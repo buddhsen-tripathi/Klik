@@ -8,7 +8,9 @@ import Overview from './Overview'
 import SelectedPart from './SelectedPart'
 import StepCard from './StepCard'
 import StepList from './StepList'
+import SheetTop from './SheetTop'
 import StepProgress from './StepProgress'
+import SwipeSteps from './SwipeSteps'
 import Stepper from './Stepper'
 
 interface Props {
@@ -31,6 +33,10 @@ interface Props {
   dockExtra?: ReactNode
   /** Fix steps at the start of the list (after a progress check), marked in the progress bar. */
   fixes?: number
+  /** Tap a part or screw: show it in 3D. */
+  onFocusPart?: (id: string) => void
+  /** Changes when a part is focused, so the phone sheet drops down to show the 3D view. */
+  focusKey?: unknown
 }
 
 const MODES: { value: Mode; label: string }[] = [
@@ -39,7 +45,7 @@ const MODES: { value: Mode; label: string }[] = [
 ]
 
 /** Right-hand (or bottom, on phones) panel: mode, stepper, the current step or overview, details. */
-export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, onStep, selectedId, modelError, writing, photo, assist, references, dockExtra, fixes = 0 }: Props) {
+export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, onStep, selectedId, modelError, writing, photo, assist, references, dockExtra, fixes = 0, onFocusPart, focusKey }: Props) {
   const step = stepIndex >= 0 ? steps[stepIndex] : null
   const selected = selectedId ? analysis.parts.find((p) => p.id === selectedId) : null
 
@@ -48,11 +54,15 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
       <div className="panel-head">
         <h1>{analysis.objectName}</h1>
         <Segmented value={mode} options={MODES} onChange={onMode} />
-        <StepProgress stepIndex={stepIndex} count={steps.length} onStep={onStep} fixes={fixes} />
       </div>
-      {assist}
-      {step ? <StepCard step={step} mode={mode} analysis={analysis} /> : <Overview analysis={analysis} />}
-      {selected && <SelectedPart part={selected} reference={references?.get(selected.id)} />}
+      <SheetTop collapseKey={focusKey}>
+        <StepProgress stepIndex={stepIndex} count={steps.length} onStep={onStep} fixes={fixes} />
+      </SheetTop>
+      {assist && <div className="panel-assist">{assist}</div>}
+      <SwipeSteps stepIndex={stepIndex} count={steps.length} onStep={onStep}>
+        {step ? <StepCard step={step} mode={mode} analysis={analysis} onFocusPart={onFocusPart} /> : <Overview analysis={analysis} />}
+        {selected && <SelectedPart part={selected} reference={references?.get(selected.id)} />}
+      </SwipeSteps>
       <Disclosure summary="All steps">
         <StepList steps={steps} stepIndex={stepIndex} onStep={onStep} />
       </Disclosure>

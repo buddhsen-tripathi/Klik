@@ -31,6 +31,8 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
   const [stepIndex, setStepIndex] = useState(-1)
   const [orient, setOrient] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // "Show me this part": zoom the 3D view to it. Belongs to the step it was asked on.
+  const [focusReq, setFocusReq] = useState<{ id: string; n: number; step: number } | null>(null)
   const [spin, setSpin] = useState(false)
   // Live coach: camera on, frames go to the voice agent, steps advance when the camera sees them done.
   const [coach, setCoach] = useState(false)
@@ -59,6 +61,12 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
   const autoScan = hasScan && (scan.modelBytes ?? 0) <= AUTO_LOAD_BYTES && !saveData()
   const source: Source = sourceChoice ?? (autoScan ? 'scan' : 'blockout')
 
+  const focus = focusReq?.step === stepIndex ? focusReq : null
+  const focusPart = (id: string | null) => {
+    setSelectedId(id)
+    if (id) setFocusReq((f) => ({ id, n: (f?.n ?? 0) + 1, step: stepIndex }))
+  }
+
   const changeMode = (m: Mode) => {
     setMode(m)
     setStepIndex(-1)
@@ -74,7 +82,7 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
   const actions: AgentActions = {
     goToStep: setStepIndex,
     setMode: changeMode,
-    selectPart: setSelectedId,
+    selectPart: focusPart,
     setView: (v) => setSource(v === 'scan' && hasScan ? 'scan' : 'blockout'),
     setSpin,
     setCoach: (on) => {
@@ -163,6 +171,7 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
           spin={spin}
           selectedId={selectedId}
           onSelect={setSelectedId}
+          focus={focus}
         />
         {source === 'scan' && scanFailed ? (
           <ScanFailedChip
@@ -216,6 +225,8 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
         photo={<PhotoWithBoxes scan={scan} compact />}
         references={references}
         fixes={recovery?.fixSteps.length ?? 0}
+        onFocusPart={focusPart}
+        focusKey={focusReq?.n}
         dockExtra={
           canWatch && (
             <AssistButtons

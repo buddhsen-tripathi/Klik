@@ -30,4 +30,11 @@ export interface ViewerProps {
   spin?: boolean
   selectedId: string | null
   onSelect: (id: string | null) => void
+  /** Zoom to this part (bump `n` to zoom again). */
+  focus?: Focus | null
+}
+
+export interface Focus {
+  id: string
+  n: number
 }

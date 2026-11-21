@@ -22,6 +22,7 @@ export default function BlockoutModel({
 }: ViewerProps & { ghost?: boolean; only?: Set<string>; traySlots?: Map<string, Slot>; references?: Map<string, ModelFile> }) {
   const ownSlots = useMemo(() => (traySlots ? null : blockTraySlots(analysis)), [traySlots, analysis])
   const slots = traySlots ?? ownSlots!
+  const focusing = selectedId != null || [...states.values()].some((s) => s.active)
   return (
     <group>
       {analysis.parts
@@ -36,6 +37,7 @@ export default function BlockoutModel({
             reference={references?.get(part.id)}
             selected={selectedId === part.id}
             ghost={ghost}
+            dim={focusing}
             onSelect={onSelect}
           />
         ))}
@@ -51,9 +53,11 @@ function BlockoutPart(props: {
   reference?: ModelFile
   selected: boolean
   ghost?: boolean
+  /** Something else is in focus: fade this part unless it's highlighted or on the tray. */
+  dim?: boolean
   onSelect: (id: string | null) => void
 }) {
-  const { part, state, distance, slot, reference, selected, ghost, onSelect } = props
+  const { part, state, distance, slot, reference, selected, ghost, dim, onSelect } = props
   const group = useRef<THREE.Group>(null)
   const mat = useRef<THREE.MeshStandardMaterial>(null)
   const invalidate = useThree((s) => s.invalidate)
@@ -74,7 +78,12 @@ function BlockoutPart(props: {
     [part.position, dir, distance, state.offset, state.tray, slot, h],
   )
   // Faint only while it overlaps the real scan (parts SAM 3D couldn't see); solid on the tray.
-  const targetOpacity = ghost && !state.tray ? 0.35 : 1
+  const targetOpacity = ghost && !state.tray ? 0.35 : dim && !highlight && !state.tray ? 0.4 : 1
+  // The step's part pulses a few times when the step starts.
+  const pulseUntil = useRef(0)
+  useEffect(() => {
+    if (state.active) pulseUntil.current = performance.now() + 1800
+  }, [state.active])
 
   // New parts drop in from above and fade in, so the model visibly builds as Gemini streams it.
   useLayoutEffect(() => {
@@ -92,11 +101,17 @@ function BlockoutPart(props: {
     invalidate()
   }, [highlight, state.active, selected, target, targetOpacity, invalidate])
 
-  useFrame((_, dt) => {
+  useFrame((st, dt) => {
     const g = group.current
     if (!g) return
     const m = mat.current
     const k = 1 - Math.exp(-dt * EASE)
+    if (m && pulseUntil.current) {
+      const pulsing = performance.now() < pulseUntil.current
+      m.emissiveIntensity = pulsing ? 0.15 + 0.45 * (0.5 - 0.5 * Math.cos(st.clock.elapsedTime * 9)) : state.active ? 0.35 : selected ? 0.2 : 0
+      if (pulsing) invalidate()
+      else pulseUntil.current = 0
+    }
     g.position.lerp(target, k)
     if (m) {
       m.opacity = THREE.MathUtils.lerp(m.opacity, targetOpacity, k)
@@ -113,7 +128,7 @@ function BlockoutPart(props: {
   }
 
   return (
-    <group ref={group} position={part.position} rotation={reference ? [0, 0, 0] : [deg(part.rotation[0]), deg(part.rotation[1]), deg(part.rotation[2])]}>
+    <group ref={group} userData={{ partId: part.id }} position={part.position} rotation={reference ? [0, 0, 0] : [deg(part.rotation[0]), deg(part.rotation[1]), deg(part.rotation[2])]}>
       {reference ? (
         // A hidden part modelled from a reference photo: its own shape, uniformly scaled. The box shows while it loads.
         <group onClick={click}>
