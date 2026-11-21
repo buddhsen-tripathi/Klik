@@ -3,6 +3,7 @@ import { NonRetryableError } from 'cloudflare:workflows'
 import type { Analysis, ModelFile, ObjectIdentity, Part, Reference, ScanProgress, Step, Timing, Triage } from '../shared/types'
 import { answerSpecs, searchPages, type ResearchFindings, type ToolTiming } from './clonvo'
 import { exportTrace, traceIdFor } from './otel'
+import { findReferenceImage, referenceCandidates } from './referenceImage'
 import { triage } from './decisions'
 import { analyzePhotos, buildReference, identifyObject, writeGroupSteps, type ThinkingLevel } from './gemini'
 import { getFalResult, getFalStatus, layoutsOf, submitSam3d, type FalJob, type FalStatus } from './fal'
@@ -35,7 +36,12 @@ interface Job3d {
   partIds: string[]
   /** Epoch ms, for the waterfall. */
   submittedAt?: number
+  /** Modelled from a product photo found online (a part the user's photo can't show). */
+  reference?: { imageUrl: string; pageUrl: string; title: string }
 }
+
+/** At most this many hidden parts get a reference-photo model per scan. */
+const MAX_REFERENCE_PARTS = 3
 
 /** Latest bold heading from Gemini's thought summaries ("**Identifying fasteners**"), or the last sentence. */
 function thoughtHeadline(buf: string): string | null {
@@ -451,9 +457,50 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
     // 5. SAM 3D: parallel jobs (usually one per part). Each finished mesh is copied to R2 straight
     //    away with its pose, so a failed or slow part doesn't hold the others back.
     try {
-      const jobs = await step.do('submit-3d', { retries: { limit: 2, delay: '5 seconds', backoff: 'exponential' }, timeout: '2 minutes' }, () =>
-        submitFal(analysis),
-      )
+      // Parts the photo can't show: look for a clear product photo and model just that part from it,
+      // in parallel with the main jobs. Best effort; without one the part stays a block.
+      const submitReferences = async (a: Analysis): Promise<Job3d[]> => {
+        if (!this.env.CLONVO_API_KEY) return []
+        const found = await Promise.all(
+          referenceCandidates(a, MAX_REFERENCE_PARTS).map(async (part) => {
+            const ref = await timed(
+              `reference ${part.id}`,
+              () =>
+                findReferenceImage({
+                  geminiKey: this.env.GEMINI_API_KEY,
+                  clonvoKey: this.env.CLONVO_API_KEY,
+                  model: this.env.GEMINI_MODEL,
+                  analysis: a,
+                  part,
+                  onTiming: markTool,
+                  traceId: traceIdFor(scanId),
+                }),
+              (r) => (r ? `photo from ${new URL(r.hit.page_url).hostname}` : 'no clear photo, stays a block'),
+            ).catch(() => null)
+            if (!ref) return null
+            const { job, partIds } = await submitSam3d({
+              apiKey: this.env.FAL_KEY,
+              imageDataUri: ref.dataUri,
+              width: ref.width,
+              height: ref.height,
+              parts: [{ ...part, box2d: ref.box2d }],
+              objectName: part.name,
+            })
+            return { job, partIds, submittedAt: Date.now(), reference: { imageUrl: ref.hit.image_url, pageUrl: ref.hit.page_url, title: ref.hit.title } }
+          }),
+        )
+        return found.filter((j) => j !== null)
+      }
+      const [mainJobs, refJobs] = await Promise.all([
+        step.do('submit-3d', { retries: { limit: 2, delay: '5 seconds', backoff: 'exponential' }, timeout: '2 minutes' }, () => submitFal(analysis)),
+        step
+          .do('submit-reference-3d', { retries: { limit: 1, delay: '5 seconds' }, timeout: '2 minutes' }, () => submitReferences(analysis))
+          .catch((err): Job3d[] => {
+            console.warn('reference models skipped', err)
+            return []
+          }),
+      ])
+      const jobs: Job3d[] = [...mainJobs, ...refJobs]
       const files: (ModelFile & { key: string })[] = []
       const finished = new Set<number>()
       const failed = new Set<number>()
@@ -480,7 +527,8 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
                 if (!url) throw new NonRetryableError('fal returned no GLB file')
                 const res = await fetch(url)
                 if (!res.ok || !res.body) throw new Error(`GLB download failed: ${res.status}`)
-                const key = `scans/${scanId}/part-${j}.glb`
+                const ref = jobs[j].reference
+                const key = `scans/${scanId}/${ref ? `ref-${jobs[j].partIds[0]}` : `part-${j}`}.glb`
                 const obj = await this.env.FILES.put(key, res.body, { httpMetadata: { contentType: 'model/gltf-binary' } })
                 const bytes = obj?.size ?? null
                 // Whole job: submit → mesh saved (fal queue + GPU + our download).
@@ -490,7 +538,14 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
                   end: Date.now(),
                   note: `${bytes ? (bytes / 1e6).toFixed(1) : '?'} MB, download ${((Date.now() - t) / 1000).toFixed(1)}s`,
                 })
-                return { key, url: '', partIds: jobs[j].partIds, layouts: layoutsOf(result), bytes }
+                return {
+                  key,
+                  url: '',
+                  partIds: jobs[j].partIds,
+                  layouts: layoutsOf(result),
+                  bytes,
+                  ...(ref ? { source: 'reference' as const, reference: ref } : {}),
+                }
               })
               .then((f) => ({ j, f }))
               .catch((err) => {
@@ -528,10 +583,11 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
       }
 
       await step.do('finish-3d', async () => {
-        if (files.length === 0) throw new NonRetryableError(failed.size ? 'every 3D job failed' : '3D generation timed out after 10 minutes')
+        const mainFailed = [...failed].filter((j) => !jobs[j].reference).length
+        if (!files.some((f) => !f.source)) throw new NonRetryableError(failed.size ? 'every 3D job failed' : '3D generation timed out after 10 minutes')
         await setFields({
           stage: 'done',
-          model_error: failed.size ? `${failed.size} of ${jobs.length} parts couldn't be scanned in 3D; they show as blocks.` : null,
+          model_error: mainFailed ? `${mainFailed} of ${mainJobs.length} parts couldn't be scanned in 3D; they show as blocks.` : null,
         })
         await mark({ name: 'model ready', start: createdAt, end: Date.now(), note: `${files.length}/${jobs.length} parts` })
       })

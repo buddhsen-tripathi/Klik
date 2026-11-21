@@ -1,9 +1,10 @@
 import { Edges, Html } from '@react-three/drei'
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { DIRECTION_VECTORS, explodeDistance, type PartState } from '../../explode'
-import type { Part } from '../../shared/types'
+import type { ModelFile, Part } from '../../shared/types'
+import ReferenceMesh from './ReferenceMesh'
 import { ACTIVE_COLOR, BLACK, deg, EASE, EPS, NO_STATE } from './constants'
 import { blockTraySlots, type Slot } from './tray'
 import type { ViewerProps } from './types'
@@ -17,7 +18,8 @@ export default function BlockoutModel({
   ghost,
   only,
   traySlots,
-}: ViewerProps & { ghost?: boolean; only?: Set<string>; traySlots?: Map<string, Slot> }) {
+  references,
+}: ViewerProps & { ghost?: boolean; only?: Set<string>; traySlots?: Map<string, Slot>; references?: Map<string, ModelFile> }) {
   const ownSlots = useMemo(() => (traySlots ? null : blockTraySlots(analysis)), [traySlots, analysis])
   const slots = traySlots ?? ownSlots!
   return (
@@ -31,6 +33,7 @@ export default function BlockoutModel({
             state={states.get(part.id) ?? NO_STATE}
             distance={explodeDistance(analysis, part.size)}
             slot={slots.get(part.id)}
+            reference={references?.get(part.id)}
             selected={selectedId === part.id}
             ghost={ghost}
             onSelect={onSelect}
@@ -45,11 +48,12 @@ function BlockoutPart(props: {
   state: PartState
   distance: number
   slot?: Slot
+  reference?: ModelFile
   selected: boolean
   ghost?: boolean
   onSelect: (id: string | null) => void
 }) {
-  const { part, state, distance, slot, selected, ghost, onSelect } = props
+  const { part, state, distance, slot, reference, selected, ghost, onSelect } = props
   const group = useRef<THREE.Group>(null)
   const mat = useRef<THREE.MeshStandardMaterial>(null)
   const invalidate = useThree((s) => s.invalidate)
@@ -90,14 +94,16 @@ function BlockoutPart(props: {
 
   useFrame((_, dt) => {
     const g = group.current
+    if (!g) return
     const m = mat.current
-    if (!g || !m) return
     const k = 1 - Math.exp(-dt * EASE)
     g.position.lerp(target, k)
-    m.opacity = THREE.MathUtils.lerp(m.opacity, targetOpacity, k)
-    m.depthWrite = m.opacity > 0.9
+    if (m) {
+      m.opacity = THREE.MathUtils.lerp(m.opacity, targetOpacity, k)
+      m.depthWrite = m.opacity > 0.9
+    }
     // Keep drawing only while still moving.
-    if (g.position.distanceTo(target) > EPS || Math.abs(m.opacity - targetOpacity) > EPS) invalidate()
+    if (g.position.distanceTo(target) > EPS || (m && Math.abs(m.opacity - targetOpacity) > EPS)) invalidate()
   })
 
   const scale: [number, number, number] = part.shape === 'cylinder' ? [w, h, w] : [w, h, d]
@@ -107,18 +113,27 @@ function BlockoutPart(props: {
   }
 
   return (
-    <group ref={group} position={part.position} rotation={[deg(part.rotation[0]), deg(part.rotation[1]), deg(part.rotation[2])]}>
-      <mesh scale={scale} onClick={click}>
-        {part.shape === 'cylinder' ? (
-          <cylinderGeometry args={[0.5, 0.5, 1, 20]} />
-        ) : part.shape === 'sphere' ? (
-          <sphereGeometry args={[0.5, 20, 12]} />
-        ) : (
-          <boxGeometry args={[1, 1, 1]} />
-        )}
-        <meshStandardMaterial ref={mat} color={part.color} roughness={0.7} metalness={0.05} transparent opacity={ghost ? 0.35 : 1} />
-        <Edges threshold={20} color={highlight ? '#ff9f1c' : '#1f2329'} />
-      </mesh>
+    <group ref={group} position={part.position} rotation={reference ? [0, 0, 0] : [deg(part.rotation[0]), deg(part.rotation[1]), deg(part.rotation[2])]}>
+      {reference ? (
+        // A hidden part modelled from a reference photo: its own shape, uniformly scaled. The box shows while it loads.
+        <group onClick={click}>
+          <Suspense fallback={null}>
+            <ReferenceMesh file={reference} part={part} opacity={targetOpacity} highlight={highlight} active={state.active} />
+          </Suspense>
+        </group>
+      ) : (
+        <mesh scale={scale} onClick={click}>
+          {part.shape === 'cylinder' ? (
+            <cylinderGeometry args={[0.5, 0.5, 1, 20]} />
+          ) : part.shape === 'sphere' ? (
+            <sphereGeometry args={[0.5, 20, 12]} />
+          ) : (
+            <boxGeometry args={[1, 1, 1]} />
+          )}
+          <meshStandardMaterial ref={mat} color={part.color} roughness={0.7} metalness={0.05} transparent opacity={ghost ? 0.35 : 1} />
+          <Edges threshold={20} color={highlight ? '#ff9f1c' : '#1f2329'} />
+        </mesh>
+      )}
       {highlight && !ghost && (
         <Html center position={[0, h / 2 + 2, 0]} className="part-label" zIndexRange={[10, 0]}>
           {part.name}

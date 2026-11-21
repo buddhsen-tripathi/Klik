@@ -172,6 +172,13 @@ export interface ModelFile {
   /** One pose per part; empty on old combined scans (no placement known). */
   layouts: Layout[]
   bytes: number | null
+  /**
+   * 'reference': a part the user's photo can't show (underside, hidden screws), modelled from a
+   * product photo found online. Only ever used for parts with no scan; scale it uniformly to the
+   * part's size and keep its own shape.
+   */
+  source?: 'photo' | 'reference'
+  reference?: { imageUrl: string; pageUrl: string; title: string }
 }
 
 export interface Timing {

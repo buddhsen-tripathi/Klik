@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { Mode } from '../../explode'
-import type { Analysis, Step, Timing } from '../../shared/types'
+import type { Analysis, Step, Timing, ModelFile } from '../../shared/types'
 import { Disclosure } from '../ui/Section'
 import Segmented from '../ui/Segmented'
 import AiDetails from './AiDetails'
@@ -26,6 +26,8 @@ interface Props {
   timings?: Timing[]
   /** Shown under the stepper, e.g. "Check my progress" or the fix-plan banner. */
   assist?: ReactNode
+  /** Hidden parts modelled from a reference photo, for credit. */
+  references?: Map<string, NonNullable<ModelFile['reference']>>
 }
 
 const MODES: { value: Mode; label: string }[] = [
@@ -34,7 +36,7 @@ const MODES: { value: Mode; label: string }[] = [
 ]
 
 /** Right-hand (or bottom, on phones) panel: mode, stepper, the current step or overview, details. */
-export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, onStep, selectedId, modelError, writing, photo, timings = [], assist }: Props) {
+export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, onStep, selectedId, modelError, writing, photo, timings = [], assist, references }: Props) {
   const step = stepIndex >= 0 ? steps[stepIndex] : null
   const selected = selectedId ? analysis.parts.find((p) => p.id === selectedId) : null
 
@@ -47,7 +49,7 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
       <Stepper stepIndex={stepIndex} count={steps.length} writing={writing} onStep={onStep} />
       {assist}
       {step ? <StepCard step={step} mode={mode} analysis={analysis} /> : <Overview analysis={analysis} />}
-      {selected && <SelectedPart part={selected} />}
+      {selected && <SelectedPart part={selected} reference={references?.get(selected.id)} />}
       <Disclosure summary="All steps">
         <StepList steps={steps} stepIndex={stepIndex} onStep={onStep} />
       </Disclosure>

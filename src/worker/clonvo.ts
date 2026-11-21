@@ -143,6 +143,35 @@ export async function searchPages(
   return { notes: notes.slice(0, MAX_NOTES), sources }
 }
 
+export interface ImageHit {
+  title: string
+  image_url: string
+  page_url: string
+  width: number | null
+  height: number | null
+}
+
+/** Product photos for a query (Clonvo image_search, ~1-2 s). */
+export async function imageSearch(
+  apiKey: string,
+  query: string,
+  objective: string,
+  maxResults: number,
+  onTiming?: (t: ToolTiming) => void,
+  traceId?: string,
+): Promise<ImageHit[]> {
+  const r = await callTool<{ results: ImageHit[] }>(
+    apiKey,
+    'image_search',
+    { query: query.slice(0, 200), objective: objective.slice(0, 2000), max_results: maxResults },
+    20_000,
+    'clonvo.image_search',
+    onTiming,
+    traceId,
+  )
+  return (r.results ?? []).filter((h) => h.image_url?.startsWith('http'))
+}
+
 /** Short cited answer for the voice agent's "search the web" tool. */
 export async function webAnswer(apiKey: string, question: string): Promise<{ answer: string; sources: Source[] }> {
   const r = await callTool<AnswerResult>(apiKey, 'web_answer', { query: question }, 20_000, 'clonvo.web_answer.agent')

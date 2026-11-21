@@ -47,6 +47,10 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
     () => (recovery ? planStates(analysis, mode, ordered.slice(0, recovery.resumeAt), steps, stepIndex) : partStates(analysis, mode, stepIndex)),
     [analysis, mode, stepIndex, recovery, ordered, steps],
   )
+  const references = useMemo(
+    () => new Map(scan.modelFiles.flatMap((f) => (f.source === 'reference' && f.reference ? [[f.partIds[0], f.reference] as const] : []))),
+    [scan.modelFiles],
+  )
   const canWatch = steps.length > 0 && scan.stage !== 'analyzing'
   const hasScan = scan.modelFiles.length > 0
   // Show the real scan (texture and shape) as soon as it exists, unless it's huge or the user picked boxes.
@@ -212,6 +216,7 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
         writing={scan.stage === 'analyzing'}
         photo={<PhotoWithBoxes scan={scan} compact />}
         timings={scan.timings}
+        references={references}
         assist={
           canWatch && (
             <ProgressAssist
