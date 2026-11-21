@@ -5,6 +5,7 @@ import type { FunctionDeclaration } from './liveSession'
 
 /** What the agent can see of the app right now. */
 export interface AgentSnapshot {
+  scanId: string
   analysis: Analysis
   /** Steps in the order the user is following them (the fix plan if one is active). */
   steps: Step[]

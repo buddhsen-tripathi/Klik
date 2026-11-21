@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Analysis, Recovery } from '../../shared/types'
 import { webAnswer } from '../clonvo'
 import type { ThinkingLevel } from '../gemini'
+import { exportSpans, newSpanId } from '../otel'
 import { checkProgress } from '../recovery'
 import { ALLOWED_TYPES, fileUrl, parseJson, toBase64 } from '../util'
 
@@ -9,6 +10,48 @@ const MAX_CHECK_BYTES = 4 * 1024 * 1024
 const LIVE_SESSION_MINUTES = 30
 
 const assist = new Hono<{ Bindings: Env }>()
+
+/**
+ * Voice sessions run browser → Gemini Live directly, so the app reports each session here
+ * (turns with what was said, tool calls, coach checks) and it goes to Clonvo Traces as one trace.
+ */
+assist.post('/telemetry', async (c) => {
+  if (!c.env.CLONVO_API_KEY) return c.body(null, 204)
+  const body = await c.req.json<any>().catch(() => null)
+  if (!body || typeof body.name !== 'string' || !Array.isArray(body.events)) return c.json({ error: 'bad telemetry' }, 400)
+  const num = (x: unknown, d: number) => (typeof x === 'number' && Number.isFinite(x) ? x : d)
+  const flat = (o: unknown) =>
+    Object.fromEntries(
+      Object.entries(o && typeof o === 'object' ? o : {})
+        .filter(([, v]) => ['string', 'number', 'boolean'].includes(typeof v))
+        .map(([k, v]) => [k.slice(0, 80), typeof v === 'string' ? v.slice(0, 4000) : v]),
+    ) as Record<string, string | number | boolean>
+  const sessionId = typeof body.scanId === 'string' ? body.scanId.slice(0, 64) : undefined
+  const rootId = newSpanId()
+  const start = num(body.start, Date.now())
+  c.executionCtx.waitUntil(
+    exportSpans(c.env.CLONVO_API_KEY, newSpanId() + newSpanId(), [
+      {
+        spanId: rootId,
+        name: body.name.slice(0, 100),
+        start,
+        end: num(body.end, Date.now()),
+        attributes: { 'gen_ai.operation.name': 'invoke_agent', 'gen_ai.agent.name': 'voice helper', 'session.id': sessionId, ...flat(body.attributes) },
+      },
+      ...body.events.slice(0, 300).map((e: any) => ({
+        spanId: newSpanId(),
+        parentSpanId: rootId,
+        name: String(e?.name ?? 'event').slice(0, 100),
+        start: num(e?.start, start),
+        end: num(e?.end, num(e?.start, start)),
+        ok: e?.ok !== false,
+        client: String(e?.name ?? '').startsWith('tool '),
+        attributes: { 'session.id': sessionId, ...flat(e?.attributes) },
+      })),
+    ]),
+  )
+  return c.body(null, 204)
+})
 
 /**
  * "Check my progress": body is a photo of the build as it is now.

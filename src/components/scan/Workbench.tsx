@@ -69,7 +69,7 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
   }
 
   // ---- voice helper ----
-  const snapshot = (): AgentSnapshot => ({ analysis, steps, stepIndex, mode, recovery, hasScan, coach })
+  const snapshot = (): AgentSnapshot => ({ scanId: scan.id, analysis, steps, stepIndex, mode, recovery, hasScan, coach })
   const actions: AgentActions = {
     goToStep: setStepIndex,
     setMode: changeMode,

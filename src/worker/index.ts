@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { exportRequestTrace, installFetchTracing, RequestTrace, runTraced } from './tracing'
 import { planSteps } from '../shared/plan'
 import type { Analysis, ModelFile, Recovery, ScanPhoto, ScanSummary, ScanView, Timing } from '../shared/types'
 import { checkStep } from './decisions'
@@ -15,6 +16,18 @@ const MAX_FRAME_BYTES = 1024 * 1024
 const app = new Hono<{ Bindings: Env }>()
 
 // Progress checks (re-plan after mistakes) and the voice agent.
+// Clonvo Traces: every API request that does real work (anything but a plain read) is one trace.
+installFetchTracing()
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+app.use('/api/*', async (c, next) => {
+  if (!c.env.CLONVO_API_KEY || c.req.path === '/api/telemetry') return next()
+  const sessionId = c.req.path.match(UUID)?.[0] ?? null
+  const trace = new RequestTrace(`${c.req.method} ${c.req.path.replace(UUID, ':id')}`, sessionId)
+  await runTraced(trace, next)
+  // Polling reads (GET with no outbound calls) aren't worth an event each.
+  if (c.req.method === 'GET' && trace.spans.length === 0) return
+  c.executionCtx.waitUntil(exportRequestTrace(c.env.CLONVO_API_KEY, trace, c.res.status))
+})
 app.route('/api', assist)
 
 // Upload 1-6 photos of one object (different angles) and start the scan pipeline.

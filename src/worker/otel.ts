@@ -34,6 +34,56 @@ function classify(t: Timing, model: string): Record<string, string> {
   return { 'gen_ai.operation.name': 'chat', 'gen_ai.system': 'gemini', 'gen_ai.request.model': model }
 }
 
+export interface SpanData {
+  spanId: string
+  parentSpanId?: string
+  name: string
+  start: number
+  end: number
+  /** Outbound call (client span) rather than our own work. */
+  client?: boolean
+  ok?: boolean
+  attributes: Record<string, string | number | boolean | null | undefined>
+}
+
+/** POST spans of one trace to Clonvo (OTLP/HTTP JSON). Never throws: tracing must not break the app. */
+export async function exportSpans(apiKey: string, traceId: string, spans: SpanData[]): Promise<void> {
+  const body = {
+    resourceSpans: [
+      {
+        resource: { attributes: attrs({ 'service.name': 'assemble-on-the-go', 'deployment.environment': 'production' }) },
+        scopeSpans: [
+          {
+            scope: { name: 'assemble-on-the-go' },
+            spans: spans.map((s) => ({
+              traceId,
+              spanId: s.spanId,
+              ...(s.parentSpanId ? { parentSpanId: s.parentSpanId } : {}),
+              name: s.name,
+              kind: s.client ? 3 : 1,
+              startTimeUnixNano: ns(s.start),
+              endTimeUnixNano: ns(Math.max(s.end, s.start)),
+              attributes: attrs(s.attributes),
+              status: { code: s.ok === false ? 2 : 1 },
+            })),
+          },
+        ],
+      },
+    ],
+  }
+  try {
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!res.ok) console.warn('trace export failed', res.status, (await res.text()).slice(0, 200))
+  } catch (err) {
+    console.warn('trace export failed', err)
+  }
+}
+
 export interface TraceRun {
   apiKey: string
   scanId: string
@@ -46,52 +96,29 @@ export interface TraceRun {
   ok?: boolean
 }
 
-/** Export one run (a scan, a progress check) as a trace. Never throws: tracing must not break the app. */
+/** Export one run (a scan) as a trace, built from its latency waterfall. */
 export async function exportTrace(run: TraceRun): Promise<void> {
-  const traceId = traceIdFor(run.scanId)
   const rootId = rootSpanIdFor(run.scanId)
-  const spans = [
+  await exportSpans(run.apiKey, traceIdFor(run.scanId), [
     {
-      traceId,
       spanId: rootId,
       name: run.name,
-      kind: 1,
-      startTimeUnixNano: ns(run.start),
-      endTimeUnixNano: ns(Math.max(run.end, run.start)),
-      attributes: attrs({ 'session.id': run.scanId, 'gen_ai.operation.name': 'invoke_agent', 'gen_ai.agent.name': 'assemble-on-the-go', ...run.attributes }),
-      status: { code: run.ok === false ? 2 : 1 },
+      start: run.start,
+      end: run.end,
+      ok: run.ok,
+      attributes: { 'session.id': run.scanId, 'gen_ai.operation.name': 'invoke_agent', 'gen_ai.agent.name': 'assemble-on-the-go', ...run.attributes },
     },
     ...run.timings
       .filter((t) => t.end >= t.start && t.name !== run.name)
       .map((t) => ({
-        traceId,
         spanId: t.spanId ?? newSpanId(),
         parentSpanId: rootId,
         name: t.name,
-        kind: t.name.startsWith('clonvo.') || t.name.startsWith('3D') ? 3 : 1,
-        startTimeUnixNano: ns(t.start),
-        endTimeUnixNano: ns(t.end),
-        attributes: attrs({ ...classify(t, run.model), 'clonvo.generation_id': t.generationId ?? undefined, note: t.note, 'session.id': run.scanId }),
-        status: { code: t.note?.includes('failed') ? 2 : 1 },
+        start: t.start,
+        end: t.end,
+        client: t.name.startsWith('clonvo.') || t.name.startsWith('3D'),
+        ok: !t.note?.includes('failed'),
+        attributes: { ...classify(t, run.model), 'clonvo.generation_id': t.generationId ?? undefined, note: t.note, 'session.id': run.scanId },
       })),
-  ]
-  const body = {
-    resourceSpans: [
-      {
-        resource: { attributes: attrs({ 'service.name': 'assemble-on-the-go', 'deployment.environment': 'production' }) },
-        scopeSpans: [{ scope: { name: 'assemble-on-the-go' }, spans }],
-      },
-    ],
-  }
-  try {
-    const res = await fetch(ENDPOINT, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${run.apiKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(10_000),
-    })
-    if (!res.ok) console.warn('trace export failed', res.status, (await res.text()).slice(0, 200))
-  } catch (err) {
-    console.warn('trace export failed', err)
-  }
+  ])
 }

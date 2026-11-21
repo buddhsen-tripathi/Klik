@@ -3,6 +3,7 @@ import { liveToken } from '../../api'
 import { buildInstructions, runTool, TOOLS, vocabulary, type AgentActions, type AgentSnapshot } from './agentTools'
 import { createAudio, type AudioIO } from './audio'
 import { LiveSession } from './liveSession'
+import { createSessionLog, type SessionLog } from './telemetry'
 
 export type AgentStatus = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'error'
 export interface Line {
@@ -61,6 +62,40 @@ export function useVoiceAgent(snapshot: () => AgentSnapshot, actions: AgentActio
   const lastTalk = useRef(0)
   /** Last camera frame sent; coach checks only run while frames are actually arriving. */
   const lastFrameAt = useRef(0)
+  /** Clonvo Traces: this session's turns and tool calls (see telemetry.ts). */
+  const log = useRef<{ session: SessionLog | null; turnStart: number; heard: string; said: string; model: string; frames: number; checks: number }>({
+    session: null,
+    turnStart: 0,
+    heard: '',
+    said: '',
+    model: '',
+    frames: 0,
+    checks: 0,
+  })
+  const flushLog = useCallback((reason: string) => {
+    const l = log.current
+    l.session?.flush({ 'gen_ai.request.model': l.model, coach: latest.current.snapshot().coach, frames_sent: l.frames, coach_checks: l.checks, end_reason: reason })
+    l.session = null
+  }, [])
+  const logTurn = useCallback(() => {
+    const l = log.current
+    if (!l.session || (!l.heard && !l.said)) return
+    l.session.event({
+      name: l.heard.startsWith('[App] Coach check') ? 'coach check' : l.heard.startsWith('[App]') ? 'app event' : 'voice turn',
+      start: l.turnStart || Date.now(),
+      end: Date.now(),
+      attributes: {
+        'gen_ai.operation.name': 'chat',
+        'gen_ai.system': 'gemini',
+        'gen_ai.request.model': l.model,
+        'input.value': l.heard.slice(0, 2000),
+        'output.value': cleanCaption(l.said).slice(0, 2000),
+      },
+    })
+    l.turnStart = 0
+    l.heard = ''
+    l.said = ''
+  }, [])
   const latest = useRef({ snapshot, actions })
   useEffect(() => {
     latest.current = { snapshot, actions }
@@ -79,12 +114,13 @@ export function useVoiceAgent(snapshot: () => AgentSnapshot, actions: AgentActio
   }, [])
 
   const stop = useCallback(() => {
+    flushLog('ended by user')
     io.current.session?.close()
     io.current.audio?.close()
     io.current = { audio: null, session: null, turn: null }
     setStatus('idle')
     setActivity(null)
-  }, [])
+  }, [flushLog])
 
   /** Call from a tap: iOS only allows audio + mic from a user gesture. */
   const start = useCallback(async (greeting = 'The user just opened the voice helper. Greet them in a few words and say where they are in the guide.') => {
@@ -96,6 +132,7 @@ export function useVoiceAgent(snapshot: () => AgentSnapshot, actions: AgentActio
       io.current.audio = audio
       const { token, model } = await liveToken()
       const snap = latest.current.snapshot()
+      log.current = { session: createSessionLog(snap.scanId, snap.coach ? 'live coach session' : 'voice session'), turnStart: 0, heard: '', said: '', model, frames: 0, checks: 0 }
       const session = new LiveSession(
         token,
         { model, systemInstruction: buildInstructions(snap), tools: TOOLS, voice: VOICE, vocabulary: vocabulary(snap.analysis) },
@@ -108,24 +145,34 @@ export function useVoiceAgent(snapshot: () => AgentSnapshot, actions: AgentActio
               setError(err?.name === 'NotAllowedError' ? 'Microphone access is blocked. Allow it for this site, or type below.' : 'Microphone unavailable. You can type below.')
             })
             // Greet so the user knows it's listening.
+            log.current.heard = `[App] ${greeting}`
+            log.current.turnStart = Date.now()
             session.sendContext(`[App] ${greeting}`, true)
           },
           onAudio: (b64) => {
             lastTalk.current = Date.now()
+            log.current.turnStart ||= Date.now()
             audio.play(b64)
             setStatus('speaking')
           },
           onUserText: (t) => {
             lastTalk.current = Date.now()
+            if (log.current.heard.startsWith('[App]')) logTurn()
+            log.current.turnStart ||= Date.now()
+            log.current.heard += t
             caption('you', t)
             setStatus((s) => (s === 'speaking' ? s : 'thinking'))
           },
-          onAgentText: (t) => caption('agent', t),
+          onAgentText: (t) => {
+            log.current.said += t
+            caption('agent', t)
+          },
           onInterrupted: () => {
             audio.flush()
             setStatus('listening')
           },
           onTurnComplete: () => {
+            logTurn()
             setActivity(null)
             io.current.turn = null // next words start a new caption bubble
             // Let queued audio finish before showing "listening".
@@ -137,17 +184,32 @@ export function useVoiceAgent(snapshot: () => AgentSnapshot, actions: AgentActio
             for (const call of calls) {
               if (call.name !== 'stay_quiet') setActivity(TOOL_LABEL[call.name] ?? call.name)
               let response: object
+              const t0 = Date.now()
               try {
                 response = await runTool(call.name, call.args ?? {}, latest.current.snapshot(), latest.current.actions)
               } catch (err) {
                 response = { ok: false, error: String((err as Error)?.message ?? err) }
               }
+              log.current.session?.event({
+                name: `tool ${call.name}`,
+                start: t0,
+                end: Date.now(),
+                ok: (response as { ok?: boolean }).ok !== false,
+                attributes: {
+                  'gen_ai.operation.name': 'execute_tool',
+                  'gen_ai.tool.name': call.name,
+                  'input.value': JSON.stringify(call.args ?? {}).slice(0, 2000),
+                  'output.value': JSON.stringify(response).slice(0, 2000),
+                },
+              })
               responses.push({ id: call.id, name: call.name, response })
             }
             session.sendToolResponses(responses)
           },
           onClose: (reason, unexpected) => {
             if (io.current.session !== session) return
+            logTurn()
+            flushLog(unexpected ? `closed: ${reason}` : 'closed')
             audio.close()
             io.current = { audio: null, session: null, turn: null }
             setStatus(unexpected ? 'error' : 'idle')
@@ -163,9 +225,15 @@ export function useVoiceAgent(snapshot: () => AgentSnapshot, actions: AgentActio
       setStatus('error')
       setError((err as Error).message || 'Could not start the voice helper')
     }
-  }, [caption])
+  }, [caption, flushLog, logTurn])
 
   useEffect(() => stop, [stop])
+  // Closing the tab mid-session still reports it.
+  useEffect(() => {
+    const bye = () => flushLog('page closed')
+    window.addEventListener('pagehide', bye)
+    return () => window.removeEventListener('pagehide', bye)
+  }, [flushLog])
 
   // Live coach: every few seconds, if nobody is talking, ask it to look at the camera and speak up only if needed.
   const live = status === 'listening' || status === 'speaking' || status === 'thinking'
@@ -177,10 +245,14 @@ export function useVoiceAgent(snapshot: () => AgentSnapshot, actions: AgentActio
       if (io.current.audio?.speaking() || Date.now() - lastTalk.current < COACH_QUIET_MS) return
       if (Date.now() - lastFrameAt.current > 4000) return // camera not live: nothing to look at
       lastTalk.current = Date.now()
+      logTurn()
+      log.current.checks++
+      log.current.heard = COACH_CHECK
+      log.current.turnStart = Date.now()
       session.sendContext(COACH_CHECK, true)
     }, COACH_CHECK_MS)
     return () => clearInterval(timer)
-  }, [live])
+  }, [live, logTurn])
 
   return {
     status,
@@ -194,12 +266,20 @@ export function useVoiceAgent(snapshot: () => AgentSnapshot, actions: AgentActio
     sendText: (text: string) => {
       caption('you', text)
       io.current.turn = null
+      logTurn()
+      log.current.heard = text
+      log.current.turnStart = Date.now()
       io.current.session?.sendText(text)
       setStatus('thinking')
     },
     /** App events: silent context, or `respond` to have the agent speak about it. */
     notify: (text: string, respond = false) => {
-      if (respond) io.current.turn = null
+      if (respond) {
+        io.current.turn = null
+        logTurn()
+        log.current.heard = text
+        log.current.turnStart = Date.now()
+      }
       io.current.session?.sendContext(text, respond)
     },
     levels: () => io.current.audio?.levels() ?? { mic: 0, out: 0 },
@@ -207,6 +287,7 @@ export function useVoiceAgent(snapshot: () => AgentSnapshot, actions: AgentActio
     sendFrame: async (jpeg: Blob) => {
       if (!io.current.session) return
       lastFrameAt.current = Date.now()
+      log.current.frames++
       io.current.session.sendImage(await blobToBase64(jpeg), jpeg.type || 'image/jpeg')
     },
   }
