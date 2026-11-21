@@ -160,3 +160,58 @@
     line-height: 1.15;
   }
 }
+
+/* Take apart (up) / put together (down): a vertical pair on the left of the 3D view. */
+.mode-arrows {
+  position: absolute;
+  top: 60px;
+  left: 12px;
+  z-index: 2;
+  display: grid;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid color-mix(in oklch, var(--border) 80%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--card) 78%, transparent);
+  backdrop-filter: blur(12px) saturate(1.3);
+  -webkit-backdrop-filter: blur(12px) saturate(1.3);
+  box-shadow: var(--shadow-lg);
+}
+.mode-arrows button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.mode-arrows button.on {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.mode-arrows button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.mode-label {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  translate: 0 -50%;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: rise 0.25s ease-out both;
+}

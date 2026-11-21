@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import type { Mode } from '../../explode'
 import type { Analysis, Step, ModelFile } from '../../shared/types'
 import { Disclosure } from '../ui/Section'
-import Segmented from '../ui/Segmented'
 import AiDetails from './AiDetails'
 import Overview from './Overview'
 import SelectedPart from './SelectedPart'
@@ -19,7 +18,6 @@ interface Props {
   steps: Step[]
   mode: Mode
   stepIndex: number
-  onMode: (m: Mode) => void
   onStep: (i: number) => void
   selectedId: string | null
   modelError: string | null
@@ -44,12 +42,8 @@ interface Props {
 
 
 /** Right-hand (or bottom, on phones) panel: mode, stepper, the current step or overview, details. */
-export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, onStep, selectedId, modelError, writing, photo, assist, references, dockExtra, fixes = 0, onFocusPart, focusKey, translating }: Props) {
+export default function StepsPanel({ analysis, steps, mode, stepIndex, onStep, selectedId, modelError, writing, photo, assist, references, dockExtra, fixes = 0, onFocusPart, focusKey, translating }: Props) {
   const t = useT()
-  const modes: { value: Mode; label: string }[] = [
-    { value: 'disassemble', label: t('takeApart') },
-    { value: 'assemble', label: t('putTogether') },
-  ]
   const step = stepIndex >= 0 ? steps[stepIndex] : null
   const selected = selectedId ? analysis.parts.find((p) => p.id === selectedId) : null
 
@@ -57,7 +51,6 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
     <aside className="panel">
       <div className="panel-head">
         <h1>{analysis.objectName}</h1>
-        <Segmented value={mode} options={modes} onChange={onMode} />
       </div>
       <SheetTop collapseKey={focusKey}>
         <StepProgress stepIndex={stepIndex} count={steps.length} onStep={onStep} fixes={fixes} />

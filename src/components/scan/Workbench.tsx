@@ -19,6 +19,7 @@ import PhotoWithBoxes from './PhotoWithBoxes'
 import ScanFailedChip from './ScanFailedChip'
 import SizeCheckChip from './SizeCheckChip'
 import ViewerToolbar from './ViewerToolbar'
+import ModeArrows from './ModeArrows'
 import AssistButtons from './AssistButtons'
 
 // Camera code only loads when someone turns on the live coach or checks a photo.
@@ -215,6 +216,7 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
           spin={spin}
           onSpin={() => setSpin((v) => !v)}
         />}
+        {!waiting && !coach && <ModeArrows mode={mode} onMode={changeMode} />}
         {coach && canWatch && (
           <Suspense fallback={null}>
             <LiveCheck
@@ -241,7 +243,6 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
         steps={steps}
         mode={mode}
         stepIndex={stepIndex}
-        onMode={changeMode}
         onStep={setStepIndex}
         selectedId={selectedId}
         modelError={scan.modelError}
