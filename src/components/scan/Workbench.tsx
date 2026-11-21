@@ -9,6 +9,7 @@ import VoiceAgent from '../agent/VoiceAgent'
 import ProgressAssist from '../recovery/ProgressAssist'
 import StepsPanel from '../steps/StepsPanel'
 import Viewer3D, { type SizeCheck, type Source } from '../viewer/Viewer3D'
+import ModelLoading from '../viewer/ModelLoading'
 import LiveStatus from './LiveStatus'
 import PhotoWithBoxes from './PhotoWithBoxes'
 import ScanFailedChip from './ScanFailedChip'
@@ -56,6 +57,8 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
   )
   const canWatch = steps.length > 0 && scan.stage !== 'analyzing'
   const hasScan = scan.modelFiles.length > 0
+  // Wait for the finished 3D model instead of showing a block preview while it's built.
+  const waiting = scan.stage === 'analyzing' || scan.stage === 'modeling'
   // Show the real scan (texture and shape) as soon as it exists, unless it's huge or the user picked boxes.
   const [sourceChoice, setSource] = useState<Source | null>(null)
   const autoScan = hasScan && (scan.modelBytes ?? 0) <= AUTO_LOAD_BYTES && !saveData()
@@ -172,7 +175,9 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
           selectedId={selectedId}
           onSelect={setSelectedId}
           focus={focus}
+          waiting={waiting}
         />
+        {!waiting && source === 'scan' && hasScan && !scanFailed && <ModelLoading />}
         {source === 'scan' && scanFailed ? (
           <ScanFailedChip
             onRetry={() => {
@@ -183,14 +188,14 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
         ) : (
           source === 'scan' && hasScan && scan.stage === 'done' && sizeCheck && <SizeCheckChip check={sizeCheck} analysis={analysis} />
         )}
-        <ViewerToolbar
+        {!waiting && <ViewerToolbar
           scan={scan}
           source={source}
           onSource={setSource}
           onFlip={() => setOrient((o) => (o + 1) % 4)}
           spin={spin}
           onSpin={() => setSpin((v) => !v)}
-        />
+        />}
         {coach && canWatch && (
           <Suspense fallback={null}>
             <LiveCheck

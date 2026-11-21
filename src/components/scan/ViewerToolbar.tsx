@@ -14,10 +14,8 @@ export default function ViewerToolbar(props: {
   onSpin: () => void
 }) {
   const { scan, source, spin } = props
+  // Hidden while the model is still being built (Workbench), so the scan here is finished.
   const hasScan = scan.modelFiles.length > 0
-  // Per-part meshes stream in while the scan is still modelling.
-  const building = scan.stage === 'modeling'
-  const count = `${scan.modelFiles.length}/${scan.progress?.fal?.total ?? '?'}`
 
   return (
     <div className="viewer-bar">
@@ -27,16 +25,16 @@ export default function ViewerToolbar(props: {
           value={source}
           onChange={props.onSource}
           options={[
-            { value: 'scan', label: `3D scan${building ? ` · ${count}` : ''}` },
+            { value: 'scan', label: '3D scan' },
             { value: 'blockout', label: 'Blockout' },
           ]}
         />
       ) : hasScan ? (
         <button className="btn primary small" onClick={() => props.onSource('scan')}>
-          {building ? `Load 3D scan · ${count} parts` : `Load 3D scan${scan.modelBytes ? ` · ${formatMB(scan.modelBytes)}` : ''}`}
+          {`Load 3D scan${scan.modelBytes ? ` · ${formatMB(scan.modelBytes)}` : ''}`}
         </button>
       ) : (
-        <span className="chip">{building ? 'Blockout · 3D scan building…' : 'Blockout'}</span>
+        <span className="chip">Blockout</span>
       )}
       <div className="row">
         {source === 'scan' && hasScan && (

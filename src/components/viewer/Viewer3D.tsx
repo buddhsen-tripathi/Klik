@@ -53,11 +53,12 @@ export default function Viewer3D(props: ViewerProps) {
         cellThickness={0.5}
         position={[0, -0.01, 0]}
       />
-      {props.source === 'scan' && props.modelFiles.length > 0 ? (
+      {props.waiting ? null : props.source === 'scan' && props.modelFiles.length > 0 ? (
         // Keyed on the files + retry count, so a new part or a retry gets a fresh attempt instead of staying on boxes.
         <ModelErrorBoundary key={`${props.retryKey ?? 0}:${props.modelFiles.length}`} fallback={blockout} onError={props.onScanError}>
           <StudioLighting />
-          <Suspense fallback={<BlockoutModel {...props} ghost />}>
+          {/* Nothing while it loads (ModelLoading shows the status), not a block preview. */}
+          <Suspense fallback={null}>
             <ScannedModel {...props} />
           </Suspense>
         </ModelErrorBoundary>
@@ -74,7 +75,7 @@ export default function Viewer3D(props: ViewerProps) {
       />
       <SpinDriver on={!!props.spin} />
       {/* The scanned model frames its own (real-size) tray layout. */}
-      {!showingScan && <AutoFrame box={box} frameKey={frameKey} focus={props.focus} />}
+      {!showingScan && !props.waiting && <AutoFrame box={box} frameKey={frameKey} focus={props.focus} />}
     </Canvas>
   )
 }

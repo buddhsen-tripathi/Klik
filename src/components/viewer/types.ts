@@ -32,6 +32,8 @@ export interface ViewerProps {
   onSelect: (id: string | null) => void
   /** Zoom to this part (bump `n` to zoom again). */
   focus?: Focus | null
+  /** The 3D model is still being built: show no model yet (no block preview). */
+  waiting?: boolean
 }
 
 export interface Focus {
