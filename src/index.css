@@ -1150,3 +1150,22 @@ details.card summary {
     transform: translateX(-50%);
   }
 }
+
+.eyebrow {
+  display: block;
+  margin: 0 0 2px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.step-list .eyebrow {
+  margin-top: 8px;
+}
+
+.sources a {
+  color: inherit;
+  overflow-wrap: anywhere;
+}

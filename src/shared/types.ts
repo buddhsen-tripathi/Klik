@@ -38,6 +38,19 @@ export interface Step {
   assembly: string
   tools: string[]
   caution: string | null
+  /** Subassembly this step belongs to, when the object was split between agents. */
+  group?: string | null
+}
+
+export interface Group {
+  id: string
+  name: string
+  partIds: string[]
+}
+
+export interface Source {
+  title: string
+  url: string
 }
 
 export interface Analysis {
@@ -54,6 +67,10 @@ export interface Analysis {
   steps: Step[]
   /** Things Gemini had to guess (hidden fasteners, internals). Shown to the user. */
   assumptions: string[]
+  /** Subassemblies in disassembly order; each one gets its own step-writing agent. Missing on old scans. */
+  groups?: Group[]
+  /** Manuals / guides found on the web and given to the step writers. */
+  sources?: Source[]
   /** Photo (0-based) Gemini picked for the 3D model. Every part's box2d refers to this photo. */
   bestPhotoIndex: number
 }
@@ -84,12 +101,22 @@ export interface ScanView {
   progress: ScanProgress | null
 }
 
+export interface AgentProgress {
+  id: string
+  name: string
+  status: 'running' | 'done' | 'failed'
+}
+
 export interface ScanProgress {
   /** Latest heading from Gemini's thought summary, e.g. "Identifying the fasteners". */
   thought: string | null
   /** Parts list is complete (Gemini is now writing steps). */
   partsFinal: boolean
   fal: { status: 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED'; queuePosition: number | null; log: string | null } | null
+  /** Web lookup for manuals/specs (Clonvo), if the planner asked for one. */
+  research?: { status: 'searching' | 'done' | 'failed'; query: string; sources: Source[] } | null
+  /** Step-writing subagents, one per subassembly. */
+  agents?: AgentProgress[]
 }
 
 export interface ScanPhoto {

@@ -1,13 +1,27 @@
 import { NonRetryableError } from 'cloudflare:workflows'
 import { parsePartialJson } from './partial-json'
-import type { Analysis, Identification, Part, RemovalDirection, Step } from '../shared/types'
+import type { Analysis, Group, Identification, Part, RemovalDirection, Step } from '../shared/types'
 
 const API = 'https://generativelanguage.googleapis.com/v1beta/models'
 
 const vec3 = { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3 }
 const DIRECTIONS: RemovalDirection[] = ['up', 'down', 'left', 'right', 'front', 'back']
 
-// JSON Schema sent as generationConfig.responseJsonSchema, so Gemini must answer in this shape.
+const STEP_ITEM = {
+  type: 'object',
+  properties: {
+    partIds: { type: 'array', items: { type: 'string' } },
+    title: { type: 'string' },
+    disassembly: { type: 'string', description: 'Imperative instruction for taking these parts off.' },
+    assembly: { type: 'string', description: 'Imperative instruction for putting these parts back on.' },
+    tools: { type: 'array', items: { type: 'string' } },
+    caution: { type: ['string', 'null'] },
+  },
+  required: ['partIds', 'title', 'disassembly', 'assembly', 'tools', 'caution'],
+}
+
+// The planner (main agent). JSON Schema sent as generationConfig.responseJsonSchema.
+// It no longer writes steps: those come from one step-writer agent per group.
 const ANALYSIS_SCHEMA = {
   type: 'object',
   properties: {
@@ -17,6 +31,11 @@ const ANALYSIS_SCHEMA = {
     bestPhotoIndex: {
       type: 'integer',
       description: '0-based index of the photo that shows the most parts with the whole object in frame. All box2d values refer to this photo.',
+    },
+    researchQuery: {
+      type: ['string', 'null'],
+      description:
+        'Web search query for a manual, teardown/repair guide or spec sheet, when one would help (branded or model-specific products, appliances, electronics, flat-pack furniture). null for simple generic objects.',
     },
     summary: { type: 'string', description: 'One short sentence (max 25 words) on what it is and how it is held together.' },
     dimensions: { ...vec3, description: 'Estimated overall [width, height, depth] in cm.' },
@@ -50,25 +69,22 @@ const ANALYSIS_SCHEMA = {
         required: ['id', 'name', 'material', 'visible', 'box2d', 'shape', 'size', 'position', 'rotation', 'color', 'removalDirection'],
       },
     },
-    steps: {
+    groups: {
       type: 'array',
-      description: 'DISASSEMBLY order: first step = first thing you take off.',
+      description: 'Subassemblies in DISASSEMBLY order (first group comes off first, base/frame group last). Every part id in exactly one group.',
       items: {
         type: 'object',
         properties: {
+          id: { type: 'string', description: 'Short snake_case id.' },
+          name: { type: 'string' },
           partIds: { type: 'array', items: { type: 'string' } },
-          title: { type: 'string' },
-          disassembly: { type: 'string', description: 'Imperative instruction for taking these parts off.' },
-          assembly: { type: 'string', description: 'Imperative instruction for putting these parts back on.' },
-          tools: { type: 'array', items: { type: 'string' } },
-          caution: { type: ['string', 'null'] },
         },
-        required: ['partIds', 'title', 'disassembly', 'assembly', 'tools', 'caution'],
+        required: ['id', 'name', 'partIds'],
       },
     },
     assumptions: { type: 'array', items: { type: 'string' } },
   },
-  required: ['objectName', 'bestPhotoIndex', 'summary', 'dimensions', 'difficulty', 'estimatedMinutes', 'tools', 'safety', 'parts', 'steps', 'assumptions'],
+  required: ['objectName', 'bestPhotoIndex', 'researchQuery', 'summary', 'dimensions', 'difficulty', 'estimatedMinutes', 'tools', 'safety', 'parts', 'groups', 'assumptions'],
 }
 
 function buildPrompt(hint: string | null, photoCount: number): string {
@@ -93,11 +109,16 @@ BLOCKOUT (a rough 3D model built from simple shapes)
 - Give every part a shape, size, centre position and rotation so the shapes together look like the object. Parts should touch, not float.
 - Use realistic real-world sizes.
 
-STEPS
-- Steps are in DISASSEMBLY order. Every part except the main base/frame should be removed in exactly one step.
 - removalDirection is the way a part moves when it comes off (screws come out along their axis, a lid lifts "up", a drawer slides "front").
-- Name the exact tool (e.g. "Phillips #2 screwdriver", "5 mm Allen key").
-- Put power, sharp-edge and spring warnings in "caution" and "safety".`
+
+GROUPS (you do NOT write the steps; a specialist writes them for each group)
+- Simple objects (up to ~6 parts, or everything held by one joint): ONE group with every part.
+- Complex objects: 2 to 5 subassemblies a person would deal with separately (e.g. "Wheels", "Seat assembly", "Frame"), in disassembly order, the base/frame last.
+- Every part goes in exactly one group.
+
+RESEARCH
+- researchQuery: if you recognise a specific product or model, or the object is an appliance/electronics/flat-pack kit, give a precise search query for its manual or teardown guide (brand + model + "disassembly" or "assembly instructions"). Otherwise null.
+- Put power, sharp-edge and spring warnings in "safety".`
 }
 
 export interface InlineImage {
@@ -267,9 +288,9 @@ export async function analyzePhotos(opts: {
   images: InlineImage[]
   hint: string | null
   thinkingLevel: ThinkingLevel | null
-  onPartial?: (partial: Analysis, partsFinal: boolean) => void
+  onPartial?: (partial: Analysis, partsFinal: boolean, raw: any) => void
   onThought?: (chunk: string) => void
-}): Promise<Analysis> {
+}): Promise<{ analysis: Analysis; researchQuery: string | null }> {
   const answer = await streamText({
     apiKey: opts.apiKey,
     model: opts.model,
@@ -282,15 +303,86 @@ export async function analyzePhotos(opts: {
       if (!opts.onPartial) return
       const raw = parsePartialJson(soFar)
       if (!raw || typeof raw !== 'object') return
-      // Only keep parts/steps whose last schema field has arrived, so nothing half-defined is drawn.
+      // Only keep parts whose last schema field has arrived, so nothing half-defined is drawn.
       const parts = Array.isArray(raw.parts) ? raw.parts.filter((p: any) => p && 'removalDirection' in p) : []
-      const steps = Array.isArray(raw.steps) ? raw.steps.filter((s: any) => s && 'caution' in s) : []
-      // Parts are final once Gemini has moved on to the steps.
-      const partsFinal = 'steps' in raw
-      opts.onPartial(normalizeAnalysis({ ...raw, parts, steps }, opts.images.length), partsFinal)
+      // Parts are final once Gemini has moved on to the groups.
+      const partsFinal = 'groups' in raw
+      opts.onPartial(normalizeAnalysis({ ...raw, parts, groups: [] }, opts.images.length), partsFinal, raw)
     },
   })
-  return normalizeAnalysis(JSON.parse(answer), opts.images.length)
+  const raw = JSON.parse(answer)
+  return { analysis: normalizeAnalysis(raw, opts.images.length), researchQuery: typeof raw.researchQuery === 'string' && raw.researchQuery.trim() ? raw.researchQuery.trim() : null }
+}
+
+// ---------- step-writer subagent: one per group ----------
+
+const GROUP_STEPS_SCHEMA = {
+  type: 'object',
+  properties: {
+    steps: { type: 'array', description: 'DISASSEMBLY order for this group.', items: STEP_ITEM },
+  },
+  required: ['steps'],
+}
+
+/**
+ * Write the steps for one subassembly. Sees the best photo, the full parts list for context,
+ * and the web research, but only has to reason about its own group's parts.
+ */
+export async function writeGroupSteps(opts: {
+  apiKey: string
+  model: string
+  thinkingLevel: ThinkingLevel | null
+  image: InlineImage
+  analysis: Analysis
+  groupIndex: number
+  research: string | null
+}): Promise<Step[]> {
+  const { analysis, groupIndex } = opts
+  const groups = analysis.groups ?? []
+  const group = groups[groupIndex]
+  const mine = new Set(group.partIds)
+  const describe = (p: Part) =>
+    `- ${p.id}: ${p.name} (${p.material}${p.visible ? '' : ', hidden'}; comes off ${p.removalDirection})`
+  const whole = groups.length === 1
+  const before = groups.slice(0, groupIndex).map((g) => g.name)
+  const after = groups.slice(groupIndex + 1).map((g) => g.name)
+
+  const text = `You are a repair technician writing step-by-step instructions for ${whole ? 'this object' : 'ONE subassembly of this object'}.
+Object: ${analysis.objectName}. ${analysis.summary}
+
+${whole ? 'PARTS' : `YOUR GROUP: "${group.name}". Its parts`}:
+${analysis.parts.filter((p) => mine.has(p.id)).map(describe).join('\n')}
+${
+  whole
+    ? ''
+    : `
+Other parts (context only, NOT yours):
+${analysis.parts.filter((p) => !mine.has(p.id)).map(describe).join('\n')}
+
+Already removed before your group: ${before.length ? before.join(', ') : 'nothing'}.
+Still attached after your group: ${after.length ? after.join(', ') : 'nothing (yours is the base)'}.
+`
+}
+${opts.research ? `REFERENCE MATERIAL from the web (may be for a similar model; prefer it over guessing when it matches):\n${opts.research}\n` : ''}
+Write the steps in DISASSEMBLY order${whole ? '' : `: first detach "${group.name}" from what is still attached (unless it is the base), then take it apart`}.
+Rules:
+- partIds may only use these ids: ${group.partIds.join(', ')}. Each of them in exactly one step, except the one base part that stays put.
+- 1 to 3 parts per step. Name the exact tool (e.g. "Phillips #2 screwdriver", "5 mm Allen key").
+- "assembly" is the reverse action for the same parts.
+- Put power, sharp-edge and spring warnings in "caution".`
+
+  const answer = await streamText({
+    apiKey: opts.apiKey,
+    model: opts.model,
+    images: [opts.image],
+    text,
+    schema: GROUP_STEPS_SCHEMA,
+    thinkingLevel: opts.thinkingLevel,
+    onText: () => {},
+    onThought: () => {},
+  })
+  const raw = JSON.parse(answer)
+  return normalizeSteps(raw?.steps, new Set(group.partIds)).map((s) => ({ ...s, group: whole ? null : group.name }))
 }
 
 const IDENTIFY_SCHEMA = {
@@ -348,6 +440,43 @@ function normalizeBox(v: unknown): Part['box2d'] {
   return box[2] - box[0] < 5 || box[3] - box[1] < 5 ? null : box
 }
 
+export function normalizeSteps(raw: unknown, ids: Set<string>): Step[] {
+  return (Array.isArray(raw) ? raw : [])
+    .map((s: any) => ({
+      partIds: strList(s?.partIds).filter((id) => ids.has(id)),
+      title: str(s?.title, 'Step'),
+      disassembly: str(s?.disassembly),
+      assembly: str(s?.assembly),
+      tools: strList(s?.tools),
+      caution: typeof s?.caution === 'string' && s.caution.trim() ? s.caution : null,
+      group: typeof s?.group === 'string' ? s.group : null,
+    }))
+    .filter((s: Step) => s.partIds.length > 0)
+}
+
+/** Each part in exactly one group; leftovers go in the last group; no empty groups. */
+function normalizeGroups(raw: unknown, parts: Part[]): Group[] {
+  const ids = new Set(parts.map((p) => p.id))
+  const taken = new Set<string>()
+  const usedIds = new Set<string>()
+  const groups: Group[] = []
+  for (const [i, g] of (Array.isArray(raw) ? raw : []).entries()) {
+    const partIds = strList((g as any)?.partIds).filter((id) => ids.has(id) && !taken.has(id))
+    if (!partIds.length) continue
+    partIds.forEach((id) => taken.add(id))
+    let id = str((g as any)?.id).toLowerCase().replace(/[^a-z0-9_]+/g, '_') || `group_${i + 1}`
+    while (usedIds.has(id)) id = `${id}_${i + 1}`
+    usedIds.add(id)
+    groups.push({ id, name: str((g as any)?.name, `Group ${i + 1}`), partIds })
+  }
+  const leftovers = parts.map((p) => p.id).filter((id) => !taken.has(id))
+  if (leftovers.length) {
+    if (groups.length) groups[groups.length - 1].partIds.push(...leftovers)
+    else groups.push({ id: 'all', name: 'All parts', partIds: leftovers })
+  }
+  return groups
+}
+
 export function normalizeAnalysis(raw: any, photoCount = 1): Analysis {
   const seen = new Set<string>()
   const parts: Part[] = (Array.isArray(raw?.parts) ? raw.parts : []).map((p: any, i: number) => {
@@ -372,16 +501,8 @@ export function normalizeAnalysis(raw: any, photoCount = 1): Analysis {
   })
 
   const ids = new Set(parts.map((p) => p.id))
-  const steps: Step[] = (Array.isArray(raw?.steps) ? raw.steps : [])
-    .map((s: any) => ({
-      partIds: strList(s?.partIds).filter((id) => ids.has(id)),
-      title: str(s?.title, 'Step'),
-      disassembly: str(s?.disassembly),
-      assembly: str(s?.assembly),
-      tools: strList(s?.tools),
-      caution: typeof s?.caution === 'string' && s.caution.trim() ? s.caution : null,
-    }))
-    .filter((s: Step) => s.partIds.length > 0)
+  const steps = normalizeSteps(raw?.steps, ids)
+  const groups = normalizeGroups(raw?.groups, parts)
 
   const difficulty = ['easy', 'medium', 'hard'].includes(raw?.difficulty) ? raw.difficulty : 'medium'
   return {
@@ -394,6 +515,8 @@ export function normalizeAnalysis(raw: any, photoCount = 1): Analysis {
     safety: strList(raw?.safety),
     parts,
     steps,
+    groups,
+    sources: Array.isArray(raw?.sources) ? raw.sources : [],
     assumptions: strList(raw?.assumptions),
     bestPhotoIndex: Math.min(photoCount - 1, Math.max(0, Math.round(num(raw?.bestPhotoIndex, 0)))),
   }

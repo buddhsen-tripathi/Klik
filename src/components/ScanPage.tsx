@@ -156,9 +156,23 @@ function LiveStatus({ scan }: { scan: ScanView }) {
   const parts = scan.analysis?.parts.length ?? 0
   let title: string
   let detail: string | null = null
+  let extra: string | null = null
   if (scan.stage === 'analyzing') {
-    title = p?.thought ?? (parts ? 'Building the block model…' : 'Looking at your photos…')
-    detail = parts ? `${parts} part${parts > 1 ? 's' : ''} found${p?.partsFinal ? ' · writing steps' : ''}` : null
+    const agents = p?.agents ?? []
+    if (agents.length) {
+      const done = agents.filter((a) => a.status !== 'running').length
+      title = agents.length > 1 ? `${agents.length} agents writing steps (${done}/${agents.length})` : 'Writing the steps…'
+      detail =
+        agents.length > 1
+          ? agents.map((a) => `${a.name} ${a.status === 'done' ? '✓' : a.status === 'failed' ? '✕' : '…'}`).join(' · ')
+          : `${parts} parts`
+    } else {
+      title = p?.thought ?? (parts ? 'Building the block model…' : 'Looking at your photos…')
+      detail = parts ? `${parts} part${parts > 1 ? 's' : ''} found${p?.partsFinal ? ' · splitting into subassemblies' : ''}` : null
+    }
+    const r = p?.research
+    if (r?.status === 'searching') extra = `🔎 Looking up “${r.query}”`
+    else if (r?.status === 'done') extra = `🔎 ${r.sources.length} source${r.sources.length === 1 ? '' : 's'} found for “${r.query}”`
   } else {
     const fal = p?.fal
     if (fal?.status === 'IN_QUEUE') title = `3D scan queued${fal.queuePosition != null ? ` (#${fal.queuePosition + 1})` : ''}`
@@ -172,6 +186,7 @@ function LiveStatus({ scan }: { scan: ScanView }) {
       <div>
         <strong>{title}</strong>
         {detail && <small>{detail}</small>}
+        {extra && <small>{extra}</small>}
       </div>
       <div className="viewer-progress" />
     </div>

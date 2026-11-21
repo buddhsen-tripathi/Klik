@@ -41,7 +41,7 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
           ← Back
         </button>
         <span className="step-count">
-          {stepIndex < 0 ? (writing ? `Overview · ${steps.length ? `${steps.length} steps so far` : 'writing steps…'}` : 'Overview') : `Step ${stepIndex + 1} of ${steps.length}`}
+          {stepIndex < 0 ? (writing && steps.length === 0 ? 'Writing steps…' : 'Overview') : `Step ${stepIndex + 1} of ${steps.length}`}
         </span>
         <button className="btn primary" onClick={() => onStep(stepIndex + 1)} disabled={stepIndex >= last || steps.length === 0}>
           {stepIndex < 0 ? 'Start →' : 'Next →'}
@@ -50,6 +50,7 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
 
       {step ? (
         <section className="card step-card">
+          {step.group && <p className="eyebrow">{step.group}</p>}
           <h2>{step.title}</h2>
           <p className="instruction">{mode === 'disassemble' ? step.disassembly : step.assembly}</p>
           <p className="parts-line">
@@ -123,6 +124,7 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
         <ol className="step-list">
           {steps.map((s, i) => (
             <li key={i} className={i === stepIndex ? 'current' : ''}>
+              {s.group && s.group !== steps[i - 1]?.group && <span className="eyebrow">{s.group}</span>}
               <button onClick={() => onStep(i)}>{s.title}</button>
             </li>
           ))}
@@ -138,6 +140,20 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
             <ul className="list">
               {analysis.assumptions.map((a) => (
                 <li key={a}>{a}</li>
+              ))}
+            </ul>
+          </>
+        )}
+        {analysis.sources && analysis.sources.length > 0 && (
+          <>
+            <h3>Manuals and guides used</h3>
+            <ul className="list sources">
+              {analysis.sources.map((src) => (
+                <li key={src.url}>
+                  <a href={src.url} target="_blank" rel="noreferrer noopener">
+                    {src.title}
+                  </a>
+                </li>
               ))}
             </ul>
           </>

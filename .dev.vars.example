@@ -1,2 +1,4 @@
 GEMINI_API_KEY=
 FAL_KEY=
+# Optional: web lookup of manuals/specs (https://clonvo.com)
+CLONVO_API_KEY=
