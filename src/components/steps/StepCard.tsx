@@ -1,3 +1,4 @@
+import { Bolt, TriangleAlert, Wrench } from 'lucide-react'
 import type { Mode } from '../../explode'
 import type { Analysis, Step } from '../../shared/types'
 import { Chip, ChipRow } from '../ui/Chip'
@@ -17,7 +18,7 @@ export default function StepCard({ step, mode, analysis }: { step: Step; mode: M
       </p>
       <ChipRow empty={fasteners.length === 0}>
         {fasteners.map((f) => (
-          <Chip key={f.id} icon="🔩" variant="hardware">
+          <Chip key={f.id} icon={<Bolt aria-hidden />} variant="hardware">
             {qty(f)}
             {f.spec ?? f.name}
           </Chip>
@@ -25,12 +26,14 @@ export default function StepCard({ step, mode, analysis }: { step: Step; mode: M
       </ChipRow>
       <ChipRow empty={step.tools.length === 0}>
         {step.tools.map((t) => (
-          <Chip key={t} icon="🔧">
+          <Chip key={t} icon={<Wrench aria-hidden />}>
             {t}
           </Chip>
         ))}
       </ChipRow>
-      {step.caution && <p className="caution">⚠️ {step.caution}</p>}
+      {step.caution && <p className="caution icon-text">
+          <TriangleAlert aria-hidden /> {step.caution}
+        </p>}
     </section>
   )
 }

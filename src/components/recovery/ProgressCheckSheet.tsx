@@ -1,3 +1,4 @@
+import { Camera } from 'lucide-react'
 import { useState } from 'react'
 import { checkProgress, prepareFile } from '../../api'
 import type { Mode } from '../../explode'
@@ -62,7 +63,7 @@ export default function ProgressCheckSheet({
             />
             {error && <p className="error small">{error}</p>}
             <label className="btn primary">
-              📷 Take a photo
+              <Camera aria-hidden /> Take a photo
               <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => pick(e.target.files?.[0])} />
             </label>
             <label className="btn ghost">

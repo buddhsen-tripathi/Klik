@@ -1,3 +1,4 @@
+import { Hexagon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { identify, toJpeg, type Shot } from '../../api'
 import { makeSignaturer, sigDiff, useCamera } from '../../camera'
@@ -194,9 +195,7 @@ export default function CameraScreen({ onUseLibrary }: { onUseLibrary: () => voi
 
         <div className="camera-top">
           <span className="brand light">
-            <span className="brand-mark" aria-hidden>
-              ⬡
-            </span>
+            <Hexagon className="brand-mark" aria-hidden />
             Assemble on the Go
           </span>
           <div className="row">

@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react'
 
-/** Small pill label, e.g. a tool (🔧) or a fastener (🔩). */
-export function Chip({ icon, variant, children }: { icon?: string; variant?: 'hardware'; children: ReactNode }) {
+/** Small pill label with an optional icon, e.g. a tool or a fastener. */
+export function Chip({ icon, variant, children }: { icon?: ReactNode; variant?: 'hardware'; children: ReactNode }) {
   return (
-    <span className={`chip${variant ? ` ${variant}` : ''}`}>
-      {icon && `${icon} `}
+    <span className={`chip icon-text${variant ? ` ${variant}` : ''}`}>
+      {icon}
       {children}
     </span>
   )

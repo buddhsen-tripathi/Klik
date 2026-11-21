@@ -1,3 +1,4 @@
+import { Check, CircleCheck } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { clearNotice, dismissJob, retryUpload, useJobs, type JobStage } from '../jobs'
 import { navigate } from '../nav'
@@ -37,7 +38,9 @@ export default function JobTray() {
     <>
       {notice && (
         <div className="notice" role="status">
-          <span>✅ {notice.text}</span>
+          <span className="icon-text">
+            <CircleCheck aria-hidden /> {notice.text}
+          </span>
           <button className="btn primary small" onClick={() => openScan(notice.scanId)}>
             Open
           </button>
@@ -46,7 +49,7 @@ export default function JobTray() {
 
       {jobs.length > 0 && (
         <button className={`tray-pill ${busy ? 'busy' : ''}`} onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-          {busy ? <span className="spinner small" aria-hidden /> : <span aria-hidden>✓</span>}
+          {busy ? <span className="spinner small" aria-hidden /> : <Check aria-hidden />}
           {busy ? `${busy} processing` : `${jobs.length} scan${jobs.length > 1 ? 's' : ''}`}
         </button>
       )}

@@ -3,7 +3,7 @@
 .camera-permission h2 { margin: 0; }
 .camera-permission p { margin: 0; line-height: 1.45; }
 .camera-permission .btn { width: 100%; }
-.camera-permission-icon { font-size: 40px; line-height: 1; }
+.camera-permission-icon { width: 44px; height: 44px; color: var(--accent); margin: 0 auto; }
 .camera-permission.compact { max-width: none; padding: 14px; }
 .camera-permission.compact h2 { font-size: 17px; }
 .live-check-permission { display: grid; gap: 6px; justify-items: center; }

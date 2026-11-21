@@ -2,7 +2,7 @@
 .agent-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 40; display: inline-flex; align-items: center; gap: 8px;
   padding: 12px 18px 12px 14px; border: 0; border-radius: 999px; font: inherit; font-weight: 600; cursor: pointer;
   background: #17191d; color: #fff; box-shadow: 0 6px 20px rgb(0 0 0 / 0.25); }
-.agent-fab-icon { font-size: 18px; }
+.agent-fab-icon { width: 20px; height: 20px; }
 
 .agent-panel { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 40; width: min(380px, calc(100vw - 32px));
   display: grid; gap: 10px; padding: 12px; border-radius: 18px; background: #17191d; color: #f1f2f4; box-shadow: 0 10px 30px rgb(0 0 0 / 0.3); }

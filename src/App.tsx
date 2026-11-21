@@ -1,3 +1,4 @@
+import { Hexagon } from 'lucide-react'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { cameraSupported } from './camera'
 import Capture from './components/camera/Capture'
@@ -42,9 +43,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <a href="#/" className="brand">
-          <span className="brand-mark" aria-hidden>
-            ⬡
-          </span>
+          <Hexagon className="brand-mark" aria-hidden />
           Assemble on the Go
         </a>
       </header>

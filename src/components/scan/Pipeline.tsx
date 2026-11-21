@@ -1,3 +1,4 @@
+import { Search } from 'lucide-react'
 import type { ScanView } from '../../shared/types'
 import { MATCH_LABEL, TRIAGE_STATE } from './labels'
 
@@ -37,7 +38,9 @@ export default function Pipeline({ scan }: { scan: ScanView }) {
       </li>
       <li className={r?.status === 'skipped' || r?.status === 'not_needed' ? 'pl-todo' : state(1)}>
         <strong>{researchTitle}</strong>
-        {r?.status === 'searching' && r.queries.map((q) => <small key={q}>🔎 {q}</small>)}
+        {r?.status === 'searching' && r.queries.map((q) => <small key={q} className="icon-text">
+              <Search aria-hidden /> {q}
+            </small>)}
         {r && r.sources.length > 0 && (
           <small className="sources-line">{r.sources.slice(0, 4).map((src) => new URL(src.url).hostname.replace(/^www\./, '')).join(' · ')}</small>
         )}

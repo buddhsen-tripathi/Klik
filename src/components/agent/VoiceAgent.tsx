@@ -1,3 +1,4 @@
+import { LoaderCircle, Mic } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { VoiceAgent as Agent } from './useVoiceAgent'
 import './VoiceAgent.css'
@@ -45,9 +46,7 @@ export default function VoiceAgent({ agent, coach = false, onEnd, launcher = tru
     if (!launcher) return null
     return (
       <button className="agent-fab" onClick={() => void agent.start()} aria-label="Talk to the helper">
-        <span className="agent-fab-icon" aria-hidden>
-          🎙️
-        </span>
+        <Mic className="agent-fab-icon" aria-hidden />
         <span>Ask</span>
       </button>
     )
@@ -64,7 +63,11 @@ export default function VoiceAgent({ agent, coach = false, onEnd, launcher = tru
             {coach && <span className="agent-live">LIVE</span>}
             {coach && agent.status === 'listening' ? 'Watching' : STATUS[agent.status]}
           </strong>
-          {agent.activity && <small>{agent.activity}</small>}
+          {agent.activity && (
+            <small className="icon-text">
+              <LoaderCircle className="spin" aria-hidden /> {agent.activity}
+            </small>
+          )}
           {!agent.activity && agent.status === 'listening' && (
             <small>{coach ? 'Just work. I’ll speak up if something’s off. Ask me anything.' : 'Try “next”, “which screw?” or “I think I got step 3 wrong”'}</small>
           )}

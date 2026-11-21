@@ -1,3 +1,4 @@
+import { Camera } from 'lucide-react'
 import './CameraPermission.css'
 import { isInAppBrowser, isIOS, type CameraStatus } from '../../camera'
 
@@ -43,9 +44,7 @@ export default function CameraPermission({
 
   return (
     <div className={`card camera-permission${compact ? ' compact' : ''}`}>
-      <span className="camera-permission-icon" aria-hidden>
-        📷
-      </span>
+      <Camera className="camera-permission-icon" aria-hidden />
       <h2>{title}</h2>
       <p className="muted">{body}</p>
       {status !== 'unsupported' && (

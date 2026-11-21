@@ -116,6 +116,7 @@ This project is built on these open-source projects:
 | [React](https://github.com/facebook/react) | UI | MIT |
 | [three.js](https://github.com/mrdoob/three.js) | 3D rendering | MIT |
 | [@react-three/fiber](https://github.com/pmndrs/react-three-fiber) and [@react-three/drei](https://github.com/pmndrs/drei) (Poimandres) | React renderer for three.js, GLTF loading, controls | MIT |
+| [Lucide](https://github.com/lucide-icons/lucide) (`lucide-react`) | UI icons | ISC |
 | [Hono](https://github.com/honojs/hono) | Worker API routing | MIT |
 | [Vite](https://github.com/vitejs/vite) and [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react) | Dev server and build | MIT |
 | [Cloudflare workers-sdk](https://github.com/cloudflare/workers-sdk) (Wrangler, `@cloudflare/vite-plugin`) | Local emulation and deploys | MIT / Apache-2.0 |

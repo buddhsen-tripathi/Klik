@@ -1,3 +1,4 @@
+import { RotateCw } from 'lucide-react'
 import type { ScanView } from '../../shared/types'
 import type { Source } from '../viewer/Viewer3D'
 import Segmented from '../ui/Segmented'
@@ -45,7 +46,7 @@ export default function ViewerToolbar(props: {
           </button>
         )}
         <button className={`btn small bar-btn ${spin ? 'primary' : 'ghost'}`} onClick={props.onSpin} aria-pressed={spin} aria-label={spin ? 'Stop spin' : 'Spin'} title={spin ? 'Stop spin' : 'Spin'}>
-          <span aria-hidden>↻</span>
+          <RotateCw aria-hidden />
           <span className="bar-label">{spin ? 'Stop spin' : 'Spin'}</span>
         </button>
       </div>

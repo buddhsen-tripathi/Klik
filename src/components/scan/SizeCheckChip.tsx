@@ -1,3 +1,4 @@
+import { Check, Ruler, TriangleAlert } from 'lucide-react'
 import type { Analysis } from '../../shared/types'
 import type { SizeCheck } from '../viewer/Viewer3D'
 import './SizeCheckChip.css'
@@ -23,10 +24,10 @@ export default function SizeCheckChip({ check, analysis }: { check: SizeCheck; a
     ? `${lead} · scan ${check.usedScanSize ? 'matches' : 'proportions match'} ${ref}`
     : `${lead} · the scan’s shape differs from ${ref} by ${Math.round(off * 100)}%, double-check sizes before buying parts`
   // Short pill on screen (it sits on the 3D view); the full sentence is the tooltip / screen-reader text.
-  const short = `${fmt(shown)} cm ${ok ? '✓' : `⚠ ${Math.round(off * 100)}% off`}`
   return (
-    <div className={`size-check ${ok ? 'ok' : 'warn'}`} role="note" title={text} aria-label={text}>
-      📏 {short}
+    <div className={`size-check icon-text ${ok ? 'ok' : 'warn'}`} role="note" title={text} aria-label={text}>
+      <Ruler aria-hidden /> {fmt(shown)} cm{' '}
+      {ok ? <Check aria-hidden /> : <><TriangleAlert aria-hidden /> {Math.round(off * 100)}% off</>}
     </div>
   )
 }

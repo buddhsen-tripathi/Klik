@@ -1,7 +1,14 @@
+import { ArrowRight, Check, CircleHelp, CornerDownRight, TriangleAlert } from 'lucide-react'
+import type { ReactNode } from 'react'
 import type { Recovery } from '../../shared/types'
 import './Recovery.css'
 
-const ICON: Record<Recovery['stepStatus'][number]['status'], string> = { done: '✓', not_done: '', wrong: '!', unsure: '?' }
+const ICON: Record<Recovery['stepStatus'][number]['status'], ReactNode> = {
+  done: <Check aria-hidden />,
+  not_done: null,
+  wrong: <TriangleAlert aria-hidden />,
+  unsure: <CircleHelp aria-hidden />,
+}
 const LABEL: Record<Recovery['stepStatus'][number]['status'], string> = { done: 'done', not_done: 'to do', wrong: 'needs fixing', unsure: 'can’t tell' }
 
 /** Result of a progress check: what's done, what's off, and the plan from here. */
@@ -31,7 +38,11 @@ export default function RecoveryCard({ recovery, onStart, onClear, onRecheck }: 
                 {m.stepIndex != null ? `Step ${m.stepIndex + 1}: ` : ''}
                 {m.problem}
               </strong>
-              {m.fix && <span>→ {m.fix}</span>}
+              {m.fix && (
+                <span className="icon-text">
+                  <CornerDownRight aria-hidden /> {m.fix}
+                </span>
+              )}
             </li>
           ))}
         </ul>
@@ -39,7 +50,8 @@ export default function RecoveryCard({ recovery, onStart, onClear, onRecheck }: 
       <div className="recovery-actions">
         {!finished && (
           <button className="btn primary" onClick={onStart}>
-            {fixes ? `Fix ${fixes === 1 ? 'it' : `${fixes} things`}, then step ${recovery.resumeAt + 1} →` : `Continue at step ${recovery.resumeAt + 1} →`}
+            {fixes ? `Fix ${fixes === 1 ? 'it' : `${fixes} things`}, then step ${recovery.resumeAt + 1}` : `Continue at step ${recovery.resumeAt + 1}`}
+            <ArrowRight aria-hidden />
           </button>
         )}
         <div className="row">

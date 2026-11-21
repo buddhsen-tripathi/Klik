@@ -35,17 +35,17 @@ const blobToBase64 = (b: Blob) =>
   })
 
 const TOOL_LABEL: Record<string, string> = {
-  go_to_step: '→ Changing step',
-  next_step: '→ Next step',
-  previous_step: '← Previous step',
-  set_mode: '⇄ Switching mode',
-  show_part: '🔎 Showing the part',
-  set_view: '🧊 Changing the view',
-  live_coach: '🎥 Live coach',
-  check_progress: '🔍 Checking your build…',
-  fix_plan: '🛠 Fix plan',
-  search_web: '🌐 Searching the web…',
-  new_scan: '📷 New scan',
+  go_to_step: 'Changing step',
+  next_step: 'Next step',
+  previous_step: 'Previous step',
+  set_mode: 'Switching mode',
+  show_part: 'Showing the part',
+  set_view: 'Changing the view',
+  live_coach: 'Live coach',
+  check_progress: 'Checking your build…',
+  fix_plan: 'Fix plan',
+  search_web: 'Searching the web…',
+  new_scan: 'New scan',
 }
 
 /**

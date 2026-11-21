@@ -1,3 +1,4 @@
+import { BookOpen, Ruler, Wrench } from 'lucide-react'
 import type { Analysis } from '../../shared/types'
 import { Chip, ChipRow } from '../ui/Chip'
 import { BulletSection, Section } from '../ui/Section'
@@ -13,11 +14,11 @@ export default function Overview({ analysis }: { analysis: Analysis }) {
       <p>{analysis.summary}</p>
       {ref && ref.match !== 'none' && (
         <p className={`doc-match ${ref.match}`}>
-          📘 {ref.match === 'exact' ? 'Matched the manual for' : 'Using a similar model’s docs:'} <strong>{ref.product}</strong>
+          <BookOpen aria-hidden /> {ref.match === 'exact' ? 'Matched the manual for' : 'Using a similar model’s docs:'} <strong>{ref.product}</strong>
         </p>
       )}
       <p className="size-line">
-        📏 <strong>{formatDims(analysis.dimensions)} cm</strong> (W × H × D){' '}
+        <Ruler aria-hidden /> <strong>{formatDims(analysis.dimensions)} cm</strong> (W × H × D){' '}
         {analysis.dimensionsSource === 'docs' ? '· from the manufacturer' : '· estimated from the photo'}
       </p>
       <dl className="facts">
@@ -28,7 +29,7 @@ export default function Overview({ analysis }: { analysis: Analysis }) {
       <Section title="Tools" show={analysis.tools.length > 0}>
         <ChipRow>
           {analysis.tools.map((t) => (
-            <Chip key={t} icon="🔧">
+            <Chip key={t} icon={<Wrench aria-hidden />}>
               {t}
             </Chip>
           ))}

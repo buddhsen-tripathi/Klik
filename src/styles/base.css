@@ -197,3 +197,35 @@ button {
   margin: 0;
   padding-left: 1.2rem;
 }
+
+/* ---------- icons (lucide-react: inline SVG, tree-shaken, inherit color and font size) ---------- */
+.lucide {
+  width: 1.15em;
+  height: 1.15em;
+  flex: none;
+  vertical-align: -0.2em;
+}
+.btn {
+  gap: 0.4em;
+}
+.icon-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+}
+p.icon-text,
+.caution.icon-text {
+  display: flex;
+  align-items: flex-start;
+}
+p.icon-text > .lucide {
+  margin-top: 0.15em;
+}
+.spin {
+  animation: icon-spin 1s linear infinite;
+}
+@keyframes icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

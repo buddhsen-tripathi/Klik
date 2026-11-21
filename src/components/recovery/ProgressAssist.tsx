@@ -1,3 +1,4 @@
+import { ScanSearch } from 'lucide-react'
 import type { Recovery } from '../../shared/types'
 import RecoveryBanner from './RecoveryBanner'
 import RecoveryCard from './RecoveryCard'
@@ -18,7 +19,7 @@ export default function ProgressAssist(props: {
   if (props.coach) return null
   return (
     <button className="assist-hint" onClick={props.onCheck}>
-      <span aria-hidden>🔍</span> Went wrong somewhere? <u>Check a photo</u> and I’ll re-plan from where you are.
+      <ScanSearch aria-hidden /> Went wrong somewhere? <u>Check a photo</u> and I’ll re-plan from where you are.
     </button>
   )
 }

@@ -88,7 +88,7 @@ export default function LiveCheck({
 
   const pct = result ? Math.round(result.done * 100) : 0
   let label: string
-  if (finished) label = 'All steps done 🎉'
+  if (finished) label = 'All steps done'
   else if (status === 'denied') label = 'Camera blocked'
   else if (status !== 'live') label = 'Starting camera…'
   else if (stepIndex < 0) label = 'Press Start'
