@@ -1,10 +1,13 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
+import { cameraSupported } from './camera'
 import Capture from './components/Capture'
+import CameraScreen from './components/CameraScreen'
+import JobTray from './components/JobTray'
 
 // three.js is ~1 MB, so only load it once the user opens a scan.
 const ScanPage = lazy(() => import('./components/ScanPage'))
 
-// Tiny hash router: #/ is the capture screen, #/scan/<id> is a scan.
+// Tiny hash router: #/ is the camera, #/upload is the photo picker, #/scan/<id> is a scan.
 function useRoute() {
   const [hash, setHash] = useState(window.location.hash)
   useEffect(() => {
@@ -13,11 +16,28 @@ function useRoute() {
     return () => window.removeEventListener('hashchange', onChange)
   }, [])
   const match = hash.match(/^#\/scan\/([\w-]+)/)
-  return match ? { page: 'scan' as const, id: match[1] } : { page: 'home' as const }
+  if (match) return { page: 'scan' as const, id: match[1] }
+  if (hash.startsWith('#/upload') || !cameraSupported()) return { page: 'upload' as const }
+  return { page: 'camera' as const }
+}
+
+const go = (path: string) => {
+  window.location.hash = path
 }
 
 export default function App() {
   const route = useRoute()
+
+  // The camera gets the whole screen; other pages get the normal top bar.
+  if (route.page === 'camera') {
+    return (
+      <div className="app">
+        <CameraScreen onUseLibrary={() => go('/upload')} />
+        <JobTray />
+      </div>
+    )
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -33,8 +53,9 @@ export default function App() {
           <ScanPage key={route.id} id={route.id} />
         </Suspense>
       ) : (
-        <Capture />
+        <Capture onUseCamera={() => go('/')} />
       )}
+      <JobTray />
     </div>
   )
 }
