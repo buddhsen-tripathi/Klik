@@ -87,6 +87,22 @@ export interface Step {
   group?: string | null
 }
 
+/** Note a step writer leaves for the others and the reviewer. */
+export interface Handoff {
+  /** needs_first: these parts (from other groups) must already be off. note: anything else to know. */
+  kind: 'needs_first' | 'note'
+  partIds: string[]
+  text: string
+}
+
+/** What the reviewer checked and fixed after the parallel step writers. */
+export interface PlanReview {
+  checked: number
+  fixed: string[]
+  remaining: string[]
+  notes: string[]
+}
+
 export interface Group {
   id: string
   name: string
@@ -124,6 +140,8 @@ export interface Analysis {
   triage?: Triage | null
   /** Photo (0-based) Gemini picked for the 3D model. Every part's box2d refers to this photo. */
   bestPhotoIndex: number
+  /** Reviewer's report on the merged plan. */
+  review?: PlanReview | null
 }
 
 export type ScanStage = 'queued' | 'analyzing' | 'modeling' | 'done' | 'failed'
@@ -212,7 +230,7 @@ export interface ScanProgress {
     total?: number
   } | null
   /** Pipeline phase while analyzing. */
-  phase?: 'identifying' | 'researching' | 'planning' | 'writing'
+  phase?: 'identifying' | 'researching' | 'planning' | 'writing' | 'reviewing'
   /** What we think it is, from the identify pass. */
   identity?: { objectName: string; brand: string | null; model: string | null } | null
   triage?: Triage | null

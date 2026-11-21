@@ -31,6 +31,7 @@ function classify(t: Timing, model: string): Record<string, string> {
   if (t.name.startsWith('clonvo.')) return { 'gen_ai.operation.name': 'execute_tool', 'gen_ai.tool.name': t.name.replace(/^clonvo\./, '') }
   if (t.name.startsWith('3D')) return { 'gen_ai.operation.name': 'execute_tool', 'gen_ai.tool.name': 'fal.sam-3d' }
   if (/^(queue|steps ready|model ready|research)/.test(t.name)) return {}
+  if (t.name === 'reviewer') return { 'gen_ai.operation.name': 'invoke_agent', 'gen_ai.agent.name': 'plan reviewer' }
   return { 'gen_ai.operation.name': 'chat', 'gen_ai.system': 'gemini', 'gen_ai.request.model': model }
 }
 

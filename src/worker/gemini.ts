@@ -1,6 +1,6 @@
 import { NonRetryableError } from 'cloudflare:workflows'
 import { parsePartialJson } from './partial-json'
-import type { Analysis, Group, Identification, ObjectIdentity, Part, Reference, RemovalDirection, Source, Step, Triage } from '../shared/types'
+import type { Analysis, Group, Identification, ObjectIdentity, Part, Reference, RemovalDirection, Source, Step, Triage, Handoff } from '../shared/types'
 
 const API = 'https://generativelanguage.googleapis.com/v1beta/models'
 
@@ -545,8 +545,21 @@ const GROUP_STEPS_SCHEMA = {
   type: 'object',
   properties: {
     steps: { type: 'array', description: 'DISASSEMBLY order for this group.', items: STEP_ITEM },
+    handoff: {
+      type: 'array',
+      description: 'Notes for the other step writers and the reviewer about what your steps assume. Empty if nothing.',
+      items: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: ['needs_first', 'note'] },
+          partIds: { type: 'array', items: { type: 'string' }, description: 'needs_first: part ids from OTHER groups that must already be off before your first step.' },
+          text: { type: 'string', description: 'One short sentence.' },
+        },
+        required: ['kind', 'partIds', 'text'],
+      },
+    },
   },
-  required: ['steps'],
+  required: ['steps', 'handoff'],
 }
 
 /**
@@ -561,7 +574,9 @@ export async function writeGroupSteps(opts: {
   analysis: Analysis
   groupIndex: number
   reference: Reference | null
-}): Promise<Step[]> {
+  /** Reviewer feedback when this writer is re-run to repair its group. */
+  repair?: string
+}): Promise<{ steps: Step[]; notes: Handoff[] }> {
   const { analysis, groupIndex } = opts
   const groups = analysis.groups ?? []
   const group = groups[groupIndex]
@@ -601,7 +616,10 @@ Rules:
 - Only state exact sizes that appear in a part's [spec] or in the reference sheet. If a size is not known, describe it plainly and hedge the tool ("the 4 small Phillips screws, likely a #1 driver"); never invent thread sizes or lengths.
 - If the documents give an official order, follow it: an official ASSEMBLY order is reversed for disassembly.
 - "assembly" is the reverse action for the same parts, with any torque / alignment / orientation note from the documents.
-- Put power, sharp-edge and spring warnings in "caution".`
+- Put power, sharp-edge and spring warnings in "caution".
+- handoff: other writers work on the other groups at the same time and can't see you. Leave a "needs_first" note with the part ids from OTHER groups that must be off before your first step, and a "note" for fasteners shared with another group or anything you leave in place.${opts.repair ? `
+
+${opts.repair}` : ''}`
 
   const answer = await streamText({
     apiKey: opts.apiKey,
@@ -614,7 +632,12 @@ Rules:
     onThought: () => {},
   })
   const raw = JSON.parse(answer)
-  return normalizeSteps(raw?.steps, new Set(group.partIds)).map((s) => ({ ...s, group: whole ? null : group.name }))
+  const allIds = new Set(analysis.parts.map((p) => p.id))
+  const notes: Handoff[] = (Array.isArray(raw?.handoff) ? raw.handoff : [])
+    .filter((n: any) => typeof n?.text === 'string' && n.text.trim())
+    .map((n: any) => ({ kind: n.kind === 'needs_first' ? 'needs_first' : 'note', partIds: strList(n.partIds).filter((id) => allIds.has(id) && !mine.has(id)), text: n.text.trim().slice(0, 300) }))
+    .slice(0, 6)
+  return { steps: normalizeSteps(raw?.steps, mine).map((s) => ({ ...s, group: whole ? null : group.name })), notes }
 }
 
 const IDENTIFY_SCHEMA = {

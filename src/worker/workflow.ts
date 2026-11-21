@@ -6,6 +6,7 @@ import { exportTrace, traceIdFor } from './otel'
 import { findReferenceImage, referenceCandidates } from './referenceImage'
 import { triage } from './decisions'
 import { analyzePhotos, buildReference, identifyObject, writeGroupSteps, type ThinkingLevel } from './gemini'
+import { checkGroup, checkPlan, orderGroups, repairBrief, type GroupResult } from './review'
 import { getFalResult, getFalStatus, layoutsOf, submitSam3d, type FalJob, type FalStatus } from './fal'
 
 export interface ScanParams {
@@ -71,7 +72,8 @@ function planJobs(parts: Part[], maxJobs: number): string[][] {
  * Critical path (what the user waits for):
  *   identify ‖ triage  →  cited spec answer  →  planner (streams parts; 3D jobs start when parts are final)
  *                                               ‖ page search + reference sheet
- *   →  step writers (parallel, one per subassembly)          3D: one SAM 3D job per part, in parallel
+ *   →  step writers (parallel, one per subassembly, leave handoff notes)   3D: one SAM 3D job per part, in parallel
+ *   →  reviewer (code checks; re-runs only a broken writer, reorders groups from the notes)
  */
 export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
   async run(event: Readonly<WorkflowEvent<ScanParams>>, step: WorkflowStep) {
@@ -396,34 +398,39 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
         .run()
         .catch(() => {})
 
-    const groupSteps = await Promise.all(
+    const writeGroup = async (i: number, repair?: string) => {
+      const row = await bestRow()
+      return writeGroupSteps({
+        apiKey: this.env.GEMINI_API_KEY,
+        model: this.env.STEPS_MODEL || this.env.GEMINI_MODEL,
+        thinkingLevel: thinking,
+        image: { base64: await readPhoto(row), mimeType: row.photo_type },
+        analysis,
+        groupIndex: i,
+        reference,
+        repair,
+      })
+    }
+
+    const groupResults: GroupResult[] = await Promise.all(
       groups.map((g, i) =>
         step
           .do(`steps-${i}-${g.id}`, { retries: { limit: 2, delay: '3 seconds', backoff: 'exponential' }, timeout: '3 minutes' }, () =>
             timed(
               `writer.${g.name}`,
               async () => {
-                const row = await bestRow()
-                const steps = await writeGroupSteps({
-                  apiKey: this.env.GEMINI_API_KEY,
-                  model: this.env.STEPS_MODEL || this.env.GEMINI_MODEL,
-                  thinkingLevel: thinking,
-                  image: { base64: await readPhoto(row), mimeType: row.photo_type },
-                  analysis,
-                  groupIndex: i,
-                  reference,
-                })
+                const result = await writeGroup(i)
                 await markAgent(i, 'done')
-                return steps
+                return result
               },
-              (s) => `${s.length} steps`,
+              (r) => `${r.steps.length} steps · ${r.notes.length} handoff note${r.notes.length === 1 ? '' : 's'}`,
             ),
           )
-          .catch(async (err): Promise<Step[]> => {
+          .catch(async (err): Promise<GroupResult> => {
             // One agent failing shouldn't sink the scan: fall back to a single generic step for its parts.
             console.warn(`step writer for ${g.name} failed`, err)
             await markAgent(i, 'failed')
-            return [
+            const steps: Step[] = [
               {
                 partIds: g.partIds,
                 title: `Remove the ${g.name.toLowerCase()}`,
@@ -434,12 +441,58 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
                 group: groups.length > 1 ? g.name : null,
               },
             ]
+            return { steps, notes: [], failed: true }
           }),
       ),
     )
 
+    // 5. Reviewer: the writers couldn't see each other, so check the merged plan (plain code),
+    //    re-run only the writers whose group has a problem (with the reviewer's notes and the other
+    //    writers' handoffs), and fix the group order from the handoff notes. Clean plan = no extra time.
+    const reviewStart = Date.now()
+    const issues = checkPlan(analysis, groups, groupResults)
+    const toRepair = [...new Set(issues.map((x) => x.groupIndex))]
+    const fixed: string[] = []
+    let results = groupResults
+    if (toRepair.length) {
+      progress.phase = 'reviewing'
+      progress.agents = []
+      progress.thought = `Reviewer: fixing ${issues.length} issue${issues.length === 1 ? '' : 's'} in ${toRepair.map((i) => groups[i].name).join(', ')}`
+      await step.do('review-start', async () => {
+        await saveProgress()
+      })
+      results = await Promise.all(
+        groupResults.map(async (r, i) => {
+          if (!toRepair.includes(i)) return r
+          const mine = issues.filter((x) => x.groupIndex === i)
+          const g = groups[i]
+          const repaired = await step
+            .do(`repair-${i}-${g.id}`, { retries: { limit: 1, delay: '2 seconds' }, timeout: '3 minutes' }, () =>
+              timed(`repair.${g.name}`, () => writeGroup(i, repairBrief(analysis, groups, i, mine, groupResults)), (x) => `${x.steps.length} steps · was: ${mine.map((m) => m.kind).join(', ')}`),
+            )
+            .catch(() => null)
+          if (!repaired) return r
+          // Keep the repair only if it actually has fewer problems than the draft.
+          const after = checkGroup(analysis, groups, i, repaired, groupResults)
+          if (after.length >= mine.length && !r.failed) return r
+          fixed.push(...mine.filter((m) => !after.some((a) => a.kind === m.kind)).map((m) => `Fixed: ${m.text}`))
+          return { ...repaired, steps: repaired.steps.map((s) => ({ ...s, group: groups.length > 1 ? g.name : null })) }
+        }),
+      )
+    }
+    const { order, moves, conflicts } = orderGroups(groups, results)
+    fixed.push(...moves)
+    const remaining = [...checkPlan(analysis, groups, results).map((x) => x.text), ...conflicts]
+    const review = { checked: results.reduce((n, r) => n + r.steps.length, 0), fixed, remaining, notes: results.flatMap((r, i) => r.notes.map((n) => `${groups[i].name}: ${n.text}`)) }
+    await mark({
+      name: 'reviewer',
+      start: reviewStart,
+      end: Date.now(),
+      note: `${issues.length + moves.length} issue${issues.length + moves.length === 1 ? '' : 's'} found · ${fixed.length} fixed · ${remaining.length} left${remaining.length ? `: ${remaining.join(' ').slice(0, 300)}` : ''}`,
+    })
+
     analysis = await step.do('finish-analysis', async () => {
-      const merged: Analysis = { ...analysis, steps: groupSteps.flat() }
+      const merged: Analysis = { ...analysis, groups: order.map((i) => groups[i]), steps: order.flatMap((i) => results[i].steps), review }
       const hasFal = Boolean(this.env.FAL_KEY)
       const done: ScanProgress = { thought: null, partsFinal: true, fal: null, research: null, agents: [] }
       await setFields({
@@ -454,7 +507,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
 
     if (!this.env.FAL_KEY) return
 
-    // 5. SAM 3D: parallel jobs (usually one per part). Each finished mesh is copied to R2 straight
+    // 6. SAM 3D: parallel jobs (usually one per part). Each finished mesh is copied to R2 straight
     //    away with its pose, so a failed or slow part doesn't hold the others back.
     try {
       // Parts the photo can't show: look for a clear product photo and model just that part from it,

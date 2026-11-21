@@ -5,7 +5,7 @@ import { MATCH_LABEL, TRIAGE_STATE } from './labels'
 /** Checklist shown before the parts arrive: identify → search manuals → read them → plan. */
 export default function Pipeline({ scan }: { scan: ScanView }) {
   const p = scan.progress!
-  const order = ['identifying', 'researching', 'planning', 'writing'] as const
+  const order = ['identifying', 'researching', 'planning', 'writing', 'reviewing'] as const
   const at = order.indexOf(p.phase ?? 'identifying')
   const state = (i: number) => (i < at ? 'pl-done' : i === at ? 'pl-active' : 'pl-todo')
   const id = p.identity

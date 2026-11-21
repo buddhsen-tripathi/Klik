@@ -14,6 +14,7 @@ Live demo: https://assemble-on-the-go.buddhsen-work.workers.dev
 - **A 3D model that keeps the real shape.** Each visible part is reconstructed from your photos with SAM 3D, keeping its texture and curves. The model is then sized against the estimated real dimensions as a sanity check, not reshaped.
 - **Parts that move on their own.** Every part is a separate object. Next / Back lift each part out and set it down in a parts tray in front of the model (taking apart), or move it back into place (putting together).
 - **Hidden parts from reference photos.** Parts the camera can't see (an inner chassis, axles) are looked up with web image search. A close photo is used only when a strict check says it shows exactly that part. Otherwise the part stays a simple block. Your scan is never replaced, and every reference photo is credited with a link to its source.
+- **Agents that check each other.** The step writers run in parallel and leave handoff notes for each other. A reviewer checks the combined plan for missing or duplicate parts, steps with no tool, and order conflicts. It re-runs only the writer that got it wrong, and every fix shows up in the traces and under "What the AI saw".
 - **Real specs.** Screws, sizes and tools come from the object's manual and spec pages found on the web, not from guesses.
 - **Voice helper.** Talk to the app hands-free: "next step", "show me the left wheel", "what size is that screw?". It drives the whole app through tools.
 - **Live coach.** The camera and the voice helper watch you work. The coach advances the steps when you finish one, warns you when something looks wrong or unsafe, and otherwise stays quiet.
@@ -34,7 +35,9 @@ Worker (Hono) ──► R2 (photos, GLB models)   D1 (scans, timings, fix plans)
    └─ ScanWorkflow (Cloudflare Workflows, one per scan; independent steps run in parallel)
         1. Gemini reads all angles: parts, 2D boxes, size estimate, a block model
         2. Clonvo web search: manual / spec pages for real fastener sizes and tools
-        3. Step-writer agents, one per subassembly, in parallel
+        3. Step-writer agents, one per subassembly, in parallel; each leaves handoff notes
+           → plan reviewer: code checks (missing/duplicate parts, tools, order), re-runs only a
+             broken writer with the others' notes, reorders groups from the notes
         4. fal SAM 3D Objects: one job per visible part → GLBs
            + hidden parts: Clonvo image search → strict Gemini pick → SAM 3D on that photo
         5. Save to R2, export the trace to Clonvo
