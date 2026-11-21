@@ -267,3 +267,15 @@ export interface Recovery {
   photoUrl: string | null
   note: string | null
 }
+
+/** GET /api/shop: one product from Shop (shop.dev). Price in the currency's minor units. */
+export interface ShopProduct {
+  title: string
+  price: { amount: number; currency: string } | null
+  seller: string | null
+  /** Product page to buy it (kept exactly as Shop returned it). */
+  url: string
+  image: string | null
+  available: boolean
+  rating: { value: number; count: number | null } | null
+}

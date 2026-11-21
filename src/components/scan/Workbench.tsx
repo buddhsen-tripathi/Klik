@@ -11,6 +11,8 @@ import StepsPanel from '../steps/StepsPanel'
 import Viewer3D, { type SizeCheck, type Source } from '../viewer/Viewer3D'
 import { markerIds } from '../../shared/parts'
 import ModelLoading from '../viewer/ModelLoading'
+import ShopSheet from '../shop/ShopSheet'
+import { closeShop } from '../shop/shopStore'
 import LiveStatus from './LiveStatus'
 import PhotoWithBoxes from './PhotoWithBoxes'
 import ScanFailedChip from './ScanFailedChip'
@@ -167,6 +169,9 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
     )
   }
 
+  // The product sheet belongs to this page.
+  useEffect(() => closeShop, [])
+
   return (
     <main className="workbench">
       <section className="viewer">
@@ -272,6 +277,7 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
         </Suspense>
       )}
       {canWatch && <VoiceAgent agent={agent} coach={coach} onEnd={endAgent} />}
+      <ShopSheet />
     </main>
   )
 }

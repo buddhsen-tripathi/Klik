@@ -61,7 +61,7 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
       {assist && <div className="panel-assist">{assist}</div>}
       <SwipeSteps stepIndex={stepIndex} count={steps.length} onStep={onStep}>
         {step ? <StepCard step={step} mode={mode} analysis={analysis} onFocusPart={onFocusPart} /> : <Overview analysis={analysis} />}
-        {selected && <SelectedPart part={selected} reference={references?.get(selected.id)} />}
+        {selected && <SelectedPart part={selected} objectName={analysis.objectName} reference={references?.get(selected.id)} />}
       </SwipeSteps>
       <Disclosure summary="All steps">
         <StepList steps={steps} stepIndex={stepIndex} onStep={onStep} />

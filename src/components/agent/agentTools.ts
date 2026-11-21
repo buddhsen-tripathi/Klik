@@ -1,8 +1,10 @@
-import { agentSearch, reportStepProblem } from '../../api'
+import { agentSearch, reportStepProblem, searchShop } from '../../api'
 import type { Mode } from '../../explode'
 import type { Analysis, Part, Recovery, Step } from '../../shared/types'
 import type { FunctionDeclaration } from './liveSession'
 import { markerIds, partLabel, plainStepText } from '../../shared/parts'
+import { money } from '../shop/money'
+import { openShop } from '../shop/shopStore'
 
 /** What the agent can see of the app right now. */
 export interface AgentSnapshot {
@@ -79,8 +81,21 @@ export const TOOLS: FunctionDeclaration[] = [
     parameters: { type: 'OBJECT', properties: { action: { type: 'STRING', enum: ['start', 'cancel'] } }, required: ['action'] },
   },
   {
+    name: 'find_products',
+    description:
+      'Show products to buy on screen (from Shop): a tool they lack, spare screws, or a replacement for a broken or lost part. The list appears on screen; mention the top one or two in a few words.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        query: str('Specific search words, e.g. "Phillips #1 precision screwdriver", "M2 x 6 mm Phillips pan head screws", or the object plus the part ("Porsche 356 diecast front bumper")'),
+        title: str('Short heading for the list, e.g. "Replacement front bumper"'),
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'search_web',
-    description: 'Look something up online (manuals, screw sizes, where to buy a spare part, how a mechanism works) when the guide does not say.',
+    description: 'Look something up online (manuals, screw sizes, how a mechanism works) when the guide does not say.',
     parameters: { type: 'OBJECT', properties: { question: str('A full, specific question including the product name') }, required: ['question'] },
   },
   {
@@ -246,6 +261,20 @@ export async function runTool(name: string, args: Record<string, unknown>, s: Ag
       }
       act.startPlan()
       return { ok: true, now: `Plan started. First: ${s.recovery.fixSteps[0]?.title ?? `guide step ${s.recovery.resumeAt + 1}`}` }
+    case 'find_products': {
+      const query = String(args.query ?? '').trim()
+      if (!query) return { ok: false, error: 'Say what to search for.' }
+      openShop({ title: String(args.title ?? '').trim() || query, query })
+      const r = await searchShop(query).catch(() => null)
+      if (!r) return { ok: false, error: 'Shop search failed right now.' }
+      if (!r.products.length) return { ok: true, found: 0, next: 'Nothing matched; offer to try different words or search_web.' }
+      return {
+        ok: true,
+        onScreen: true,
+        top: r.products.slice(0, 3).map((p) => ({ title: p.title, price: p.price ? money(p.price) : null, seller: p.seller, inStock: p.available })),
+        warnings: r.warnings,
+      }
+    }
     case 'search_web': {
       const r = await agentSearch(String(args.question ?? ''))
       return { answer: r.answer.slice(0, 1500), sources: r.sources.map((x) => x.title) }

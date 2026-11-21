@@ -7,6 +7,7 @@ import { checkStep } from './decisions'
 import { identifyFrame } from './gemini'
 import assist from './routes/assist'
 import feedback from './routes/feedback'
+import shop from './routes/shop'
 import { ALLOWED_TYPES, fileUrl, parseJson, toBase64 } from './util'
 import { orderedSteps } from '../shared/parts'
 
@@ -34,6 +35,7 @@ app.use('/api/*', async (c, next) => {
 })
 app.route('/api', assist)
 app.route('/api', feedback)
+app.route('/api', shop)
 
 // Upload 1-6 photos of one object (different angles) and start the scan pipeline.
 // Form fields: photo (repeated), width (repeated), height (repeated), hint (optional).

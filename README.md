@@ -19,6 +19,7 @@ Live demo: https://assemble-on-the-go.buddhsen-work.workers.dev
 - **Real specs.** Screws, sizes and tools come from the object's manual and spec pages found on the web, not from guesses.
 - **Voice helper.** Talk to the app hands-free: "next step", "show me the left wheel", "what size is that screw?". It drives the whole app through tools.
 - **Live coach.** The camera and the voice helper watch you work. The coach advances the steps when you finish one, warns you when something looks wrong or unsafe, and otherwise stays quiet.
+- **Buy what you need.** Tap a tool, or a part's "Find a replacement" / "Buy spares", to see matching products from [Shop](https://shop.dev) (Shopify's catalog). The voice helper can do it too: "I lost a screw, where can I get one?"
 - **Fix the plan.** Went off-script? Show the camera (or a photo) and it works out what's done, what's wrong, writes fix-up steps and tells you where to carry on.
 - **Background processing.** Scan the next thing while the last one builds; a tray tracks every job.
 - **Observability.** Every scan, API request, voice session and tool call is sent to Clonvo Traces as OpenTelemetry spans.
@@ -90,6 +91,7 @@ Models and limits are set in `wrangler.jsonc` (`GEMINI_MODEL`, `STEPS_MODEL`, `I
 | `src/worker/gemini.ts`, `decisions.ts` | Gemini prompts and schemas, Decisions API client |
 | `src/worker/fal.ts` | fal queue client for SAM 3D |
 | `src/worker/clonvo.ts`, `referenceImage.ts` | Web specs, image search and the reference-photo check |
+| `src/worker/shop.ts` | Product search on Shop MCP (tools, spares, replacement parts) |
 | `src/worker/recovery.ts` | "Fix the plan" from a photo of your progress |
 | `src/worker/otel.ts`, `tracing.ts` | OpenTelemetry export to Clonvo Traces |
 | `src/components/camera/` | Live camera, identify overlay, live step check |
@@ -133,6 +135,7 @@ These hosted services power it:
 - [Google Gemini API](https://ai.google.dev/) for analysis, step writing, the Decisions API and Gemini Live voice.
 - [fal.ai](https://fal.ai/) for hosting SAM 3D Objects inference.
 - [Clonvo](https://clonvo.com/) for web search, image search and Traces.
+- [Shop MCP](https://shop.dev/) (Shopify) for product search: tools, spare screws and replacement parts.
 - [Cloudflare](https://www.cloudflare.com/) for Workers, Workflows, D1 and R2.
 
 Reference photos used for hidden parts belong to their owners. The app shows the source link next to each part that uses one.

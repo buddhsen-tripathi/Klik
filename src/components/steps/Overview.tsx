@@ -4,6 +4,7 @@ import { Chip, ChipRow } from '../ui/Chip'
 import { BulletSection, Section } from '../ui/Section'
 import { formatDims } from './format'
 import HardwareTable from './HardwareTable'
+import { openShop } from '../shop/shopStore'
 
 /** Before step 1: what it is, how big, how hard, and what you'll need. */
 export default function Overview({ analysis }: { analysis: Analysis }) {
@@ -29,7 +30,7 @@ export default function Overview({ analysis }: { analysis: Analysis }) {
       <Section title="Tools" show={analysis.tools.length > 0}>
         <ChipRow>
           {analysis.tools.map((t) => (
-            <Chip key={t} icon={<Wrench aria-hidden />}>
+            <Chip key={t} icon={<Wrench aria-hidden />} onClick={() => openShop({ title: t, query: t })}>
               {t}
             </Chip>
           ))}

@@ -1,4 +1,4 @@
-import type { Identification, Recovery, ScanSummary, ScanView, Step } from './shared/types'
+import type { Identification, Recovery, ScanSummary, ScanView, ShopProduct, Step } from './shared/types'
 
 /** A photo ready to upload. */
 export interface Shot {
@@ -101,3 +101,11 @@ export const agentSearch = (question: string) =>
   fetch('/api/agent/search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question }) }).then((r) =>
     json<{ answer: string; sources: { title: string; url: string }[] }>(r),
   )
+
+export interface ShopResult {
+  products: ShopProduct[]
+  warnings: string[]
+}
+/** Products from Shop (shop.dev) for a tool, a spare fastener or a replacement part. */
+export const searchShop = (query: string, signal?: AbortSignal) =>
+  fetch(`/api/shop?q=${encodeURIComponent(query)}`, { signal }).then((r) => json<ShopResult>(r))

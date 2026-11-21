@@ -5,6 +5,7 @@ import { Chip, ChipRow } from '../ui/Chip'
 import { markerIds, splitTokens } from '../../shared/parts'
 import { qty } from './format'
 import Marker from './Marker'
+import { openShop } from '../shop/shopStore'
 import StepRevision from './StepRevision'
 
 /** The current step: what to do, which parts, which screws and tools. */
@@ -49,7 +50,7 @@ export default function StepCard({ step, mode, analysis, onFocusPart }: { step: 
       </ChipRow>
       <ChipRow empty={step.tools.length === 0}>
         {step.tools.map((t) => (
-          <Chip key={t} icon={<Wrench aria-hidden />}>
+          <Chip key={t} icon={<Wrench aria-hidden />} onClick={() => openShop({ title: t, query: t })}>
             {t}
           </Chip>
         ))}

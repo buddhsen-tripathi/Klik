@@ -44,6 +44,7 @@ function describe(url: URL): { name: string; kind: 'llm' | 'tool' | 'http'; attr
   }
   if (url.hostname.endsWith('fal.run') || url.hostname.endsWith('fal.media') || url.hostname.endsWith('fal.ai'))
     return { name: `fal ${url.pathname.split('/').slice(1, 4).join('/')}`, kind: 'tool', attributes: { 'gen_ai.operation.name': 'execute_tool', 'gen_ai.tool.name': 'fal.sam-3d' } }
+  if (url.hostname === 'mcp.shop.com') return { name: 'shop search_catalog', kind: 'tool', attributes: { 'gen_ai.operation.name': 'execute_tool', 'gen_ai.tool.name': 'shop.search_catalog' } }
   return { name: `GET ${url.hostname}`, kind: 'http', attributes: { 'server.address': url.hostname } }
 }
 
