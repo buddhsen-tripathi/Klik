@@ -19,7 +19,7 @@ export default function ProgressAssist(props: {
   if (props.coach) return null
   return (
     <button className="assist-hint" onClick={props.onCheck}>
-      <ScanSearch aria-hidden /> Went wrong somewhere? <u>Check a photo</u> and I’ll re-plan from where you are.
+      <ScanSearch aria-hidden /> Something off? <u>Check a photo</u>
     </button>
   )
 }

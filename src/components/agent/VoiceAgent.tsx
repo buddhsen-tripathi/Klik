@@ -69,7 +69,7 @@ export default function VoiceAgent({ agent, coach = false, onEnd, launcher = tru
             </small>
           )}
           {!agent.activity && agent.status === 'listening' && (
-            <small>{coach ? 'Just work. I’ll speak up if something’s off. Ask me anything.' : 'Try “next”, “which screw?” or “I think I got step 3 wrong”'}</small>
+            <small>{coach ? 'I’ll speak up if something’s off' : 'Try “next” or “which screw?”'}</small>
           )}
         </div>
         <button className="btn ghost small" onClick={onEnd ?? agent.stop}>

@@ -18,18 +18,37 @@
   overflow-x: auto;
 }
 
+.angle-strip button {
+  position: relative;
+  flex: none;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: none;
+  cursor: pointer;
+  opacity: 0.65;
+}
+.angle-strip button.on {
+  border-color: var(--accent);
+  opacity: 1;
+}
 .angle-strip img {
+  display: block;
   width: 56px;
   height: 56px;
   object-fit: cover;
   border-radius: 8px;
-  border: 2px solid transparent;
-  opacity: 0.7;
 }
-
-.angle-strip img.picked {
-  border-color: var(--accent);
-  opacity: 1;
+.angle-badge {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 16px;
+  height: 16px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-text);
 }
 
 @media (prefers-reduced-motion: reduce) {

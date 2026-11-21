@@ -46,7 +46,7 @@ export default function ProgressCheckSheet({
     <div className="sheet-backdrop" onClick={busy ? undefined : onClose}>
       <div className="sheet card" role="dialog" aria-label="Check my progress" onClick={(e) => e.stopPropagation()}>
         <h2>Check my progress</h2>
-        <p className="muted">Take a photo of your build as it is now. I’ll spot what’s done, anything that’s off, and where to pick up.</p>
+        <p className="muted">Take a photo of your build as it is now.</p>
         {preview && <img className="sheet-preview" src={preview} alt="Your build" />}
         {busy ? (
           <div className="progress">

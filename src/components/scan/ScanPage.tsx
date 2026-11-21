@@ -70,7 +70,7 @@ export default function ScanPage({ id }: { id: string }) {
         {scan.stage === 'analyzing' && scan.progress?.phase ? (
           <Pipeline scan={scan} />
         ) : (
-          <Progress label={scan.progress?.thought ? `${scan.progress.thought}…` : STAGE_LABEL[scan.stage]} />
+          <Progress label={STAGE_LABEL[scan.stage]} />
         )}
       </main>
     )

@@ -7,7 +7,7 @@ export default function StepRevision({ revision }: { revision: Step['revision'] 
   return (
     <details className="step-revision">
       <summary className="icon-text">
-        <History aria-hidden /> Updated after {revision.count} report{revision.count === 1 ? '' : 's'}
+        <History aria-hidden /> Updated from feedback
       </summary>
       <ul className="list">
         {revision.reasons.map((r) => (

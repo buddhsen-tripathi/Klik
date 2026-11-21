@@ -85,7 +85,7 @@ const ANALYSIS_SCHEMA = {
         required: ['id', 'name', 'partIds'],
       },
     },
-    assumptions: { type: 'array', items: { type: 'string' } },
+    assumptions: { type: 'array', items: { type: 'string' }, description: 'Short guesses the user should double-check, in plain words. Refer to photos as "photo 1", "photo 2" (counting from 1), never by index.' },
   },
   required: ['objectName', 'bestPhotoIndex', 'summary', 'dimensions', 'dimensionsSource', 'difficulty', 'estimatedMinutes', 'tools', 'safety', 'parts', 'groups', 'assumptions'],
 }

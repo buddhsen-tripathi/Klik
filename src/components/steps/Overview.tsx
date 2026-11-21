@@ -14,12 +14,12 @@ export default function Overview({ analysis }: { analysis: Analysis }) {
       <p>{analysis.summary}</p>
       {ref && ref.match !== 'none' && (
         <p className={`doc-match ${ref.match}`}>
-          <BookOpen aria-hidden /> {ref.match === 'exact' ? 'Matched the manual for' : 'Using a similar model’s docs:'} <strong>{ref.product}</strong>
+          <BookOpen aria-hidden /> {ref.match === 'exact' ? 'Manual:' : 'Similar model’s manual:'} <strong>{ref.product}</strong>
         </p>
       )}
       <p className="size-line">
-        <Ruler aria-hidden /> <strong>{formatDims(analysis.dimensions)} cm</strong> (W × H × D){' '}
-        {analysis.dimensionsSource === 'docs' ? '· from the manufacturer' : '· estimated from the photo'}
+        <Ruler aria-hidden /> <strong>{formatDims(analysis.dimensions)} cm</strong>
+        {analysis.dimensionsSource === 'docs' ? '' : <span className="muted"> · estimate</span>}
       </p>
       <dl className="facts">
         <Fact label="Difficulty" value={analysis.difficulty} />

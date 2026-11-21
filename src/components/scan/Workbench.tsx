@@ -214,7 +214,6 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
         modelError={scan.modelError}
         writing={scan.stage === 'analyzing'}
         photo={<PhotoWithBoxes scan={scan} compact />}
-        timings={scan.timings}
         references={references}
         fixes={recovery?.fixSteps.length ?? 0}
         dockExtra={

@@ -1,11 +1,10 @@
 import type { ReactNode } from 'react'
-import type { Analysis, Timing } from '../../shared/types'
+import type { Analysis } from '../../shared/types'
 import { BulletSection, Section } from '../ui/Section'
 import ReviewSummary from './ReviewSummary'
-import Waterfall from './Waterfall'
 
-/** "What the AI saw": the photo with boxes, its guesses, sources and where the time went. */
-export default function AiDetails({ analysis, photo, timings }: { analysis: Analysis; photo: ReactNode; timings: Timing[] }) {
+/** "What the AI saw": your photos with the part boxes, its guesses and the sources. */
+export default function AiDetails({ analysis, photo }: { analysis: Analysis; photo: ReactNode }) {
   const sources = analysis.sources ?? []
   return (
     <>
@@ -23,9 +22,6 @@ export default function AiDetails({ analysis, photo, timings }: { analysis: Anal
         </ul>
       </Section>
       <ReviewSummary review={analysis.review} />
-      <Section title="Where the time went" show={timings.length > 0}>
-        <Waterfall timings={timings} />
-      </Section>
     </>
   )
 }
