@@ -3,13 +3,12 @@ import { submitFalJob, waitFalJob, type FalJob } from './fal'
 
 /**
  * High-quality model of ONE part, visible or hidden:
- *  1. Nano Banana Pro redraws just that part from the user's photos: complete (hidden sides filled
+ *  1. Nano Banana Pro (Gemini API) redraws just that part from the user's photos: complete (hidden sides filled
  *     in), isolated, on white. Hidden parts (underside plates, inner frames) are drawn from what the
  *     product is, which SAM 3D can't do at all.
  *  2. Trellis 2 turns that clean image into a textured mesh.
  * About 15-20 s + 30-50 s; parts run in parallel. Fasteners are drawn in the app instead (exact specs).
  */
-const ISOLATE = 'fal-ai/nano-banana-pro/edit'
 const MESH = 'fal-ai/trellis-2'
 
 export function isolatePrompt(analysis: Analysis, part: Part): string {
@@ -27,46 +26,37 @@ export function isolatePrompt(analysis: Analysis, part: Part): string {
   ].join(' ')
 }
 
-/** Stage 1: submit the clean part image (stage boundaries let a durable step reuse a submitted job). */
-export const submitIsolate = (apiKey: string, analysis: Analysis, part: Part, photos: string[]): Promise<FalJob> =>
-  submitFalJob(apiKey, ISOLATE, { prompt: isolatePrompt(analysis, part), image_urls: photos.slice(0, 3), aspect_ratio: '1:1', resolution: '1K' })
-
-/** Stage 2: wait for the image, then submit the mesh. */
-export async function imageThenMesh(apiKey: string, isolate: FalJob): Promise<{ imageUrl: string; mesh: FalJob }> {
-  const iso = await waitFalJob<{ images?: { url: string }[] }>(apiKey, isolate, 120_000)
-  const imageUrl = iso.images?.[0]?.url
-  if (!imageUrl) throw new Error('no isolated part image')
-  // Light enough to stream to a phone: ~60k faces, 1K texture.
-  const mesh = await submitFalJob(apiKey, MESH, { image_url: imageUrl, resolution: 1024, decimation_target: 60000, texture_size: 1024 })
-  return { imageUrl, mesh }
+/**
+ * Stage 1: the clean part image, from Nano Banana Pro on the Gemini API (same key as the rest of the
+ * app, no fal credits). Returns the PNG bytes as base64.
+ */
+export async function isolateImage(opts: { apiKey: string; model: string; analysis: Analysis; part: Part; photos: { base64: string; mimeType: string }[] }): Promise<{ base64: string; mimeType: string }> {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${opts.model}:generateContent`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': opts.apiKey },
+    body: JSON.stringify({
+      contents: [{ parts: [...opts.photos.slice(0, 3).map((p) => ({ inlineData: { mimeType: p.mimeType, data: p.base64 } })), { text: isolatePrompt(opts.analysis, opts.part) }] }],
+      generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '1:1', imageSize: '1K' } },
+    }),
+    signal: AbortSignal.timeout(120_000),
+  })
+  const body = (await res.json().catch(() => null)) as any
+  if (!res.ok) throw new Error(`part image ${res.status}: ${body?.error?.message ?? 'failed'}`)
+  const img = body?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData
+  if (!img?.data) throw new Error('no isolated part image')
+  return { base64: img.data, mimeType: img.mimeType ?? 'image/png' }
 }
+
+/** Stage 2: submit the mesh for a clean part image (a data URI works as fal input). */
+export const submitMesh = (apiKey: string, image: { base64: string; mimeType: string }): Promise<FalJob> =>
+  // Light enough to stream to a phone: ~60k faces, 1K texture.
+  submitFalJob(apiKey, MESH, { image_url: `data:${image.mimeType};base64,${image.base64}`, resolution: 1024, decimation_target: 60000, texture_size: 1024 })
 
 /** Stage 3: wait for the mesh. */
 export async function meshUrl(apiKey: string, mesh: FalJob): Promise<string> {
   const out = await waitFalJob<{ model_glb?: { url: string } }>(apiKey, mesh, 240_000)
   if (!out.model_glb?.url) throw new Error('no part mesh')
   return out.model_glb.url
-}
-
-export async function modelPart(opts: { apiKey: string; analysis: Analysis; part: Part; photos: string[] }): Promise<{ glbUrl: string; imageUrl: string; imageSecs: number; meshSecs: number }> {
-  const t0 = Date.now()
-  const iso = await waitFalJob<{ images?: { url: string }[] }>(
-    opts.apiKey,
-    await submitFalJob(opts.apiKey, ISOLATE, { prompt: isolatePrompt(opts.analysis, opts.part), image_urls: opts.photos.slice(0, 3), aspect_ratio: '1:1', resolution: '1K' }),
-    90_000,
-  )
-  const imageUrl = iso.images?.[0]?.url
-  if (!imageUrl) throw new Error('no isolated part image')
-  const t1 = Date.now()
-  const mesh = await waitFalJob<{ model_glb?: { url: string } }>(
-    opts.apiKey,
-    // Light enough to stream to a phone: ~60k vertices, 1K texture.
-    await submitFalJob(opts.apiKey, MESH, { image_url: imageUrl, resolution: 1024, decimation_target: 60000, texture_size: 1024 }),
-    180_000,
-  )
-  const glbUrl = mesh.model_glb?.url
-  if (!glbUrl) throw new Error('no part mesh')
-  return { glbUrl, imageUrl, imageSecs: Math.round((t1 - t0) / 1000), meshSecs: Math.round((Date.now() - t1) / 1000) }
 }
 
 /** Parts worth a high-quality model: every component (fasteners are drawn from their spec in the app). */

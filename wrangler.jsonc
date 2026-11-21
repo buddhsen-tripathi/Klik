@@ -47,6 +47,8 @@
     // High-quality part models (Nano Banana Pro → Trellis 2, ~$0.45 each, ~60 s, in parallel), hidden parts
     // included, placed from the parts list. One process per scan: SAM 3D only runs when this is 0.
     "MAX_HQ_PARTS": "10",
+    // Nano Banana Pro on the Gemini API: draws each part clean and isolated before it is meshed.
+    "IMAGE_MODEL": "gemini-3-pro-image",
     // Fast model (hydrogen) for quick, frequent or cosmetic calls: live camera naming, identify, reference images, translation.
     "IDENTIFY_MODEL": "gemini-4-hydrogen",
     // Voice agent (Gemini Live, audio in and out, tool calls). Browser connects directly with an ephemeral token.

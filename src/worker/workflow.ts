@@ -7,11 +7,11 @@ import { findReferenceImage, referenceCandidates } from './referenceImage'
 import { triage } from './decisions'
 import { analyzePhotos, buildReference, identifyObject, writeGroupSteps, type ThinkingLevel } from './gemini'
 import { checkGroup, checkPlan, orderGroups, repairBrief, type GroupResult } from './review'
-import { toBase64 } from './util'
+import { fileUrl, toBase64 } from './util'
 import { getOrTranslate } from './translate'
 import { isLang } from '../shared/i18n'
 import { getFalResult, getFalStatus, layoutsOf, submitSam3d, type FalJob } from './fal'
-import { hqCandidates, imageThenMesh, meshUrl, submitIsolate } from './partModel'
+import { hqCandidates, isolateImage, meshUrl, submitMesh } from './partModel'
 
 export interface ScanParams {
   scanId: string
@@ -410,14 +410,22 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
       hqParts.map((part) =>
         // Three durable stages, so a replay reuses the fal jobs already paid for.
         step
-          .do(`hq-a-${part.id}`, { retries: { limit: 1, delay: '5 seconds' }, timeout: '1 minute' }, async () => {
-            const rows = (await photoRows()).slice(0, 3)
-            const photos = await Promise.all(rows.map(async (r) => `data:${r.photo_type};base64,${await readPhoto(r)}`))
-            return { job: await submitIsolate(this.env.FAL_KEY, analysis, part, photos), at: Date.now() }
+          // The image is kept in R2 (too big for a step result), then meshed from there.
+          .do(`hq-a-${part.id}`, { retries: { limit: 1, delay: '5 seconds' }, timeout: '3 minutes' }, async () => {
+            const at = Date.now()
+            const photos = await Promise.all((await photoRows()).slice(0, 3).map(async (r) => ({ base64: await readPhoto(r), mimeType: r.photo_type })))
+            const img = await isolateImage({ apiKey: this.env.GEMINI_API_KEY, model: this.env.IMAGE_MODEL || 'gemini-3-pro-image', analysis, part, photos })
+            const imageKey = `scans/${scanId}/hq-${part.id}.png`
+            await this.env.FILES.put(imageKey, Uint8Array.from(atob(img.base64), (c) => c.charCodeAt(0)), { httpMetadata: { contentType: img.mimeType } })
+            return { imageKey, mimeType: img.mimeType, at }
           })
-          .then(({ job, at }) =>
+          .then(({ imageKey, mimeType, at }) =>
             step
-              .do(`hq-b-${part.id}`, { retries: { limit: 1, delay: '5 seconds' }, timeout: '3 minutes' }, () => imageThenMesh(this.env.FAL_KEY, job))
+              .do(`hq-b-${part.id}`, { retries: { limit: 1, delay: '5 seconds' }, timeout: '1 minute' }, async () => {
+                const obj = await this.env.FILES.get(imageKey)
+                if (!obj) throw new Error('part image missing')
+                return { mesh: await submitMesh(this.env.FAL_KEY, { base64: toBase64(await obj.arrayBuffer()), mimeType }), imageUrl: fileUrl(imageKey)! }
+              })
               .then(({ imageUrl, mesh }) =>
                 step.do(`hq-c-${part.id}`, { retries: { limit: 2, delay: '5 seconds' }, timeout: '5 minutes' }, async (): Promise<SavedFile> => {
                   const res = await fetch(await meshUrl(this.env.FAL_KEY, mesh))
