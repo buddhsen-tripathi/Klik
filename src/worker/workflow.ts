@@ -139,7 +139,10 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
      * submission, e.g. the early one made while the planner was still streaming.
      */
     const maxJobs = Math.max(1, Number(this.env.MAX_3D_JOBS) || 10)
+    // One 3D process per scan: high-quality part models when on (they cover every part), SAM 3D otherwise.
+    const hqOn = Number(this.env.MAX_HQ_PARTS ?? 10) > 0
     const submitFal = async (a: Analysis): Promise<Job3d[]> => {
+      if (hqOn) return []
       const existing = await db.prepare('SELECT fal_job FROM scans WHERE id = ?').bind(scanId).first<{ fal_job: string | null }>()
       if (existing?.fal_job) {
         const saved = JSON.parse(existing.fal_job)
