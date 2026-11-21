@@ -46,7 +46,7 @@ export default function VoiceAgent({ agent, coach = false, onEnd }: { agent: Age
   if (!open) return null
 
   return (
-    <section className={`agent-panel ${agent.status}`} aria-label="Voice helper" aria-live="polite">
+    <section className={`agent-panel ${agent.status}${coach ? ' coach' : ''}`} aria-label="Voice helper" aria-live="polite">
       <div className="agent-top">
         <button ref={orb} className="agent-orb" aria-label="Voice helper" onClick={agent.status === 'error' ? () => void agent.start() : undefined}>
           <span />
@@ -72,7 +72,8 @@ export default function VoiceAgent({ agent, coach = false, onEnd }: { agent: Age
 
       {agent.lines.length > 0 && (
         <div className="agent-captions" ref={captions}>
-          {agent.lines.map((l, i) => (
+          {/* Live coach: only the latest thing it said, so the camera stays visible. */}
+          {(coach ? agent.lines.filter((l) => l.who === 'agent').slice(-1) : agent.lines).map((l, i) => (
             <p key={i} className={l.who}>
               {l.text}
             </p>

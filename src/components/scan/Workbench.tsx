@@ -229,7 +229,6 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
                 lastFrame.current = jpeg
                 if (agent.active) void agent.sendFrame(jpeg)
               }}
-              stopLabel="End live coach"
             />
           </Suspense>
         )}
@@ -251,7 +250,8 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
         references={references}
         fixes={recovery?.fixSteps.length ?? 0}
         onFocusPart={focusPart}
-        focusKey={focusReq?.n}
+        // Drop the phone sheet when a part is focused or the live coach starts (the camera needs the room).
+        focusKey={coach ? `coach:${focusReq?.n ?? 0}` : focusReq?.n}
         dockExtra={
           canWatch && (
             <AssistButtons

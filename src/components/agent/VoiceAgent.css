@@ -45,3 +45,8 @@
     bottom: calc(80px + env(safe-area-inset-bottom));
   }
 }
+
+/* Live coach: compact, so the camera above stays visible. */
+.agent-panel.coach { gap: 8px; padding: 10px 12px; }
+.agent-panel.coach .agent-captions p { max-width: none; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.agent-panel.coach .agent-type { display: none; }
