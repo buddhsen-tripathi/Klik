@@ -1,11 +1,11 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { cameraSupported } from './camera'
-import Capture from './components/Capture'
-import CameraScreen from './components/CameraScreen'
+import Capture from './components/camera/Capture'
+import CameraScreen from './components/camera/CameraScreen'
 import JobTray from './components/JobTray'
 
 // three.js is ~1 MB, so only load it once the user opens a scan.
-const ScanPage = lazy(() => import('./components/ScanPage'))
+const ScanPage = lazy(() => import('./components/scan/ScanPage'))
 
 // Tiny hash router: #/ is the camera, #/upload is the photo picker, #/scan/<id> is a scan.
 function useRoute() {

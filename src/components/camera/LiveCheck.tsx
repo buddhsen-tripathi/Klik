@@ -1,7 +1,9 @@
+import './LiveCheck.css'
 import { useEffect, useRef, useState } from 'react'
-import { checkStep, toJpeg } from '../api'
-import { useCamera } from '../camera'
-import type { Mode } from '../explode'
+import { checkStep, toJpeg } from '../../api'
+import { useCamera } from '../../camera'
+import type { Mode } from '../../explode'
+import CameraPermission from './CameraPermission'
 
 const CHECK_EVERY_MS = 1200
 const DONE_AT = 0.75 // P(step done) needed...
@@ -27,7 +29,7 @@ export default function LiveCheck({
   onAdvance: () => void
   onClose: () => void
 }) {
-  const { videoRef, status } = useCamera()
+  const { videoRef, status, request } = useCamera()
   const [result, setResult] = useState<{ done: number; inView: number } | null>(null)
   const [finished, setFinished] = useState(false)
   const loop = useRef({ busy: false, hits: 0, quietUntil: 0 })
@@ -84,6 +86,16 @@ export default function LiveCheck({
   else if (!result) label = `Watching step ${stepIndex + 1}…`
   else if (result.inView < 0.5) label = 'Point the camera at the object'
   else label = `Step ${stepIndex + 1}: ${pct >= 75 ? 'looks done' : 'not done yet'}`
+
+  if (status === 'prompt' || status === 'denied' || status === 'unsupported')
+    return (
+      <div className="live-check-permission">
+        <CameraPermission status={status} onAllow={request} compact />
+        <button className="link-btn" onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+    )
 
   return (
     <div className="live-check" role="status">

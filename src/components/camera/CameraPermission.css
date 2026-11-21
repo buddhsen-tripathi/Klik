@@ -1,0 +1,9 @@
+/* Camera permission card (iOS asks only from a tap) */
+.camera-permission { max-width: 380px; text-align: center; display: grid; gap: 10px; justify-items: center; }
+.camera-permission h2 { margin: 0; }
+.camera-permission p { margin: 0; line-height: 1.45; }
+.camera-permission .btn { width: 100%; }
+.camera-permission-icon { font-size: 40px; line-height: 1; }
+.camera-permission.compact { max-width: none; padding: 14px; }
+.camera-permission.compact h2 { font-size: 17px; }
+.live-check-permission { display: grid; gap: 6px; justify-items: center; }

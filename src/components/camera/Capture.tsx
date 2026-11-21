@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { listScans, prepareFile } from '../api'
-import { cameraSupported } from '../camera'
-import { enqueueScan } from '../jobs'
-import type { ScanSummary } from '../shared/types'
+import { listScans, prepareFile } from '../../api'
+import { cameraSupported } from '../../camera'
+import { enqueueScan } from '../../jobs'
+import type { ScanSummary } from '../../shared/types'
 
 const MAX_PHOTOS = 6
 

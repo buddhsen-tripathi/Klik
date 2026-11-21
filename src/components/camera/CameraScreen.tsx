@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { identify, toJpeg, type Shot } from '../api'
-import { makeSignaturer, sigDiff, useCamera } from '../camera'
-import { enqueueScan } from '../jobs'
-import type { Identification } from '../shared/types'
+import { identify, toJpeg, type Shot } from '../../api'
+import { makeSignaturer, sigDiff, useCamera } from '../../camera'
+import { enqueueScan } from '../../jobs'
+import CameraPermission from './CameraPermission'
+import DetectionOverlay from './DetectionOverlay'
+import GuideCube from './GuideCube'
+import type { Identification } from '../../shared/types'
 
 const MAX_SHOTS = 6
 const GOOD_SHOTS = 3
@@ -29,7 +32,7 @@ interface Captured extends Shot {
 }
 
 export default function CameraScreen({ onUseLibrary }: { onUseLibrary: () => void }) {
-  const { videoRef, status, facing, canFlip, flip } = useCamera()
+  const { videoRef, status, facing, canFlip, flip, request } = useCamera()
   const mirrored = facing === 'user'
   const stageRef = useRef<HTMLDivElement>(null)
   const [stageSize, setStageSize] = useState({ w: 0, h: 0 })
@@ -173,20 +176,11 @@ export default function CameraScreen({ onUseLibrary }: { onUseLibrary: () => voi
           ? `Slowly rotate it. I’ll grab the ${next.label.toLowerCase()} when you hold still.`
           : `Rotate the object (or walk around it) and shoot the ${next.label.toLowerCase()}`
 
-  if (status === 'denied' || status === 'unsupported') {
+  // Ask from a tap (iOS), and explain how to unblock it. 'starting' after a grant shows the viewfinder.
+  if (status === 'prompt' || status === 'denied' || status === 'unsupported') {
     return (
       <main className="scan-page centered">
-        <div className="card">
-          <h2>{status === 'denied' ? 'Camera access was blocked' : 'Live camera isn’t available here'}</h2>
-          <p className="muted">
-            {status === 'denied'
-              ? 'Allow camera access in your browser settings, or pick photos instead.'
-              : 'Live camera needs HTTPS. You can still pick photos from your library.'}
-          </p>
-          <button className="btn primary" onClick={onUseLibrary}>
-            Pick photos instead
-          </button>
-        </div>
+        <CameraPermission status={status} onAllow={request} onUseLibrary={onUseLibrary} />
       </main>
     )
   }
@@ -266,70 +260,5 @@ export default function CameraScreen({ onUseLibrary }: { onUseLibrary: () => voi
         </div>
       </div>
     </main>
-  )
-}
-
-/** Box + floating "3D hover" tag over the identified item. */
-function DetectionOverlay({
-  det,
-  video,
-  stage,
-  mirrored,
-}: {
-  det: Identification
-  video: HTMLVideoElement | null
-  stage: { w: number; h: number }
-  mirrored: boolean
-}) {
-  if (!video?.videoWidth || !stage.w || !det.box2d) return null
-  // object-fit: cover crops the video; map 0-1000 frame coords onto the visible area.
-  const scale = Math.max(stage.w / video.videoWidth, stage.h / video.videoHeight)
-  const dw = video.videoWidth * scale
-  const dh = video.videoHeight * scale
-  const ox = (stage.w - dw) / 2
-  const oy = (stage.h - dh) / 2
-  const [ymin, x0, ymax, x1] = det.box2d
-  // Front camera preview is mirrored, so mirror the box too.
-  const xmin = mirrored ? 1000 - x1 : x0
-  const xmax = mirrored ? 1000 - x0 : x1
-  const left = Math.max(8, ox + (xmin / 1000) * dw)
-  const top = Math.max(8, oy + (ymin / 1000) * dh)
-  const right = Math.min(stage.w - 8, ox + (xmax / 1000) * dw)
-  const bottom = Math.min(stage.h - 8, oy + (ymax / 1000) * dh)
-
-  return (
-    <div className="detection" style={{ left, top, width: right - left, height: bottom - top }}>
-      <i className="corner tl" />
-      <i className="corner tr" />
-      <i className="corner bl" />
-      <i className="corner br" />
-      <div className={`hover-tag ${top < 90 ? 'inside' : ''}`}>
-        <span className="mini-cube" aria-hidden>
-          <span />
-          <span />
-          <span />
-          <span />
-          <span />
-          <span />
-        </span>
-        <span className="hover-text">
-          <strong>{det.name}</strong>
-          <small>{det.disassemblable ? 'Ready to scan in 3D' : 'Probably not built to come apart'}</small>
-        </span>
-      </div>
-    </div>
-  )
-}
-
-/** Small 3D cube that turns to show which side to photograph next. */
-function GuideCube({ transform, got }: { transform: string; got: string[] }) {
-  return (
-    <div className="guide-cube" aria-hidden>
-      <div className="cube" style={{ transform: `rotateX(-18deg) rotateY(-24deg) ${transform}` }}>
-        {['front', 'right', 'back', 'left', 'top', 'bottom'].map((f) => (
-          <span key={f} className={`face ${f} ${got.includes(f) ? 'got' : ''}`} />
-        ))}
-      </div>
-    </div>
   )
 }
