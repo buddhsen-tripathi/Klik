@@ -1,0 +1,44 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "assemble-on-the-go",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-11-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // React app is served as static assets; only /api/* hits the Worker.
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // Photos and generated GLB models.
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "assemble-files" }],
+
+  // Scan records (status, Gemini analysis, model file keys).
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "assemble-db",
+      "database_id": "REPLACE_WITH_ID_FROM_wrangler_d1_create",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // One workflow instance per scan: Gemini analysis -> fal 3D job -> save GLBs.
+  "workflows": [
+    {
+      "name": "scan-workflow",
+      "binding": "SCAN_WORKFLOW",
+      "class_name": "ScanWorkflow"
+    }
+  ],
+
+  "vars": {
+    // Swap to gemini-4-hydrogen if analysis is too slow or costly.
+    "GEMINI_MODEL": "gemini-4-neon"
+  }
+  // Secrets (set with `wrangler secret put`, or .dev.vars locally):
+  //   GEMINI_API_KEY  - required
+  //   FAL_KEY         - optional; without it you get the Gemini blockout model only
+}
