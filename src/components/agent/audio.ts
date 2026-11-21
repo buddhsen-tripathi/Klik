@@ -39,7 +39,6 @@ export interface AudioIO {
   ctx: AudioContext
   /** Start sending mic audio; `onChunk` gets base64 PCM16 + its MIME type. */
   startMic(onChunk: (b64: string, mimeType: string) => void): Promise<void>
-  muteMic(muted: boolean): void
   /** Queue a 24 kHz PCM16 chunk from Gemini. */
   play(b64: string): void
   /** Stop speaking right now (user barged in). */
@@ -60,7 +59,6 @@ export async function createAudio(): Promise<AudioIO> {
 
   let stream: MediaStream | null = null
   let node: AudioWorkletNode | null = null
-  let muted = false
   let micLevel = 0
   let outLevel = 0
   let nextTime = 0
@@ -81,17 +79,14 @@ export async function createAudio(): Promise<AudioIO> {
       node = new AudioWorkletNode(ctx, 'pcm-capture')
       const mime = `audio/pcm;rate=${ctx.sampleRate}`
       node.port.onmessage = (e: MessageEvent<Int16Array>) => {
-        micLevel = muted ? 0 : rms(e.data, 0x8000)
-        if (!muted) onChunk(toBase64(new Uint8Array(e.data.buffer)), mime)
+        micLevel = rms(e.data, 0x8000)
+        onChunk(toBase64(new Uint8Array(e.data.buffer)), mime)
       }
       src.connect(node)
       // Keep the worklet pulled by the graph without making the mic audible.
       const sink = ctx.createGain()
       sink.gain.value = 0
       node.connect(sink).connect(ctx.destination)
-    },
-    muteMic(m) {
-      muted = m
     },
     play(b64) {
       const bin = atob(b64)

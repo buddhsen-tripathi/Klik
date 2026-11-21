@@ -123,19 +123,6 @@
   margin: 0;
 }
 
-.stepper {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.step-count {
-  font-weight: 600;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
 .step-card h2 {
   font-size: 1.15rem;
 }
@@ -242,18 +229,6 @@ details.card summary {
     border-left: 1px solid var(--border);
     background: var(--bg);
   }
-}
-
-.review-list li {
-  align-items: flex-start;
-}
-.review-list .lucide {
-  margin-top: 0.2em;
-}
-.review-notes summary {
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 0.9rem;
 }
 
 .step-revision {

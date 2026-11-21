@@ -1,8 +1,4 @@
-/* Voice helper: floating "Ask" button and the live panel with captions. */
-.agent-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 40; display: inline-flex; align-items: center; gap: 8px;
-  padding: 12px 18px 12px 14px; border: 0; border-radius: 999px; font: inherit; font-weight: 600; cursor: pointer;
-  background: #17191d; color: #fff; box-shadow: 0 6px 20px rgb(0 0 0 / 0.25); }
-.agent-fab-icon { width: 20px; height: 20px; }
+/* Voice helper: the live panel with captions. */
 
 .agent-panel { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 40; width: min(380px, calc(100vw - 32px));
   display: grid; gap: 10px; padding: 12px; border-radius: 18px; background: #17191d; color: #f1f2f4; box-shadow: 0 10px 30px rgb(0 0 0 / 0.3); }
@@ -34,7 +30,7 @@
 
 /* Desktop: sit over the 3D view, clear of the 400 px steps panel. */
 @media (min-width: 900px) {
-  .agent-fab, .agent-panel { right: calc(400px + 16px); }
+  .agent-panel { right: calc(400px + 16px); }
 }
 .agent-live { display: inline-block; margin-right: 6px; padding: 1px 6px; border-radius: 6px; font-size: 10px; letter-spacing: 0.06em; vertical-align: 2px;
   background: #e03131; color: #fff; animation: agent-live 1.6s ease-in-out infinite; }

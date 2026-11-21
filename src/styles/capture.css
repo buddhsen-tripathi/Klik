@@ -20,17 +20,10 @@
   margin: 0;
 }
 
-.pick-card,
-.preview-card {
+.pick-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.tip {
-  color: var(--muted);
-  font-size: 0.9rem;
-  margin: 0;
 }
 
 .preview {

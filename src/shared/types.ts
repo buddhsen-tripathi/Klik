@@ -207,26 +207,18 @@ export interface Timing {
 export interface AgentProgress {
   id: string
   name: string
-  status: 'running' | 'done' | 'failed'
 }
 
 export interface ScanProgress {
-  /** Latest heading from Gemini's thought summary, e.g. "Identifying the fasteners". */
-  thought: string | null
-  /** Parts list is complete (Gemini is now writing steps). */
-  partsFinal: boolean
   /** 3D: how many of the parallel per-part jobs have finished. */
   fal: { done: number; total: number } | null
   /** Pipeline phase while analyzing. */
   phase?: 'identifying' | 'researching' | 'planning' | 'writing' | 'reviewing'
   /** What we think it is, from the identify pass. */
   identity?: { objectName: string; brand: string | null; model: string | null } | null
-  triage?: Triage | null
   /** Web lookup for manuals/specs (Clonvo). */
   research?: {
     status: 'searching' | 'reading' | 'done' | 'failed' | 'skipped' | 'not_needed'
-    queries: string[]
-    sources: Source[]
     match?: Reference['match']
   } | null
   /** Step-writing subagents, one per subassembly. */

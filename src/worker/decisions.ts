@@ -1,5 +1,6 @@
 import type { Analysis, Step, Triage } from '../shared/types'
 import type { InlineImage } from './gemini'
+import { qty } from '../shared/parts'
 
 /**
  * Gemini Decisions API (gemini-decision-1): typed yes/no and choice questions over shared
@@ -107,7 +108,7 @@ export async function checkStep(opts: {
   const { analysis, step, mode } = opts
   const names = step.partIds.map((id) => {
     const p = analysis.parts.find((x) => x.id === id)
-    return p ? `${(p.quantity ?? 1) > 1 ? `${p.quantity}x ` : ''}${p.name}` : id
+    return p ? `${qty(p)}${p.name}` : id
   })
   const list = names.join(', ')
   const taking = mode === 'disassemble'

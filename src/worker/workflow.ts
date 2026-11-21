@@ -38,15 +38,6 @@ interface Job3d {
 /** At most this many hidden parts get a reference-photo model per scan. */
 const MAX_REFERENCE_PARTS = 3
 
-/** Latest bold heading from Gemini's thought summaries ("**Identifying fasteners**"), or the last sentence. */
-function thoughtHeadline(buf: string): string | null {
-  const heads = [...buf.matchAll(/\*\*(.+?)\*\*/g)]
-  if (heads.length) return heads[heads.length - 1][1].trim().slice(0, 80)
-  const sentences = buf.trim().split(/(?<=[.!?])\s+/)
-  const last = sentences[sentences.length - 1]?.trim()
-  return last ? last.slice(0, 80) : null
-}
-
 const THINKING_LEVELS: ThinkingLevel[] = ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH']
 
 /** Split the boxed parts into at most `maxJobs` jobs, biggest boxes first so they start earliest. */
@@ -180,7 +171,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
     }
 
     const thinking = THINKING_LEVELS.find((l) => l === this.env.ANALYSIS_THINKING) ?? null
-    const progress: ScanProgress = { thought: null, partsFinal: false, fal: null, phase: 'identifying', identity: null, research: null, agents: [] }
+    const progress: ScanProgress = { fal: null, phase: 'identifying', identity: null, research: null, agents: [] }
     const saveProgress = () => setFields({ progress: JSON.stringify(progress) })
     /** Send the whole run to Clonvo Traces (one trace per scan, built from the waterfall). */
     const sendTrace = (ok: boolean, note?: string) =>
@@ -240,7 +231,6 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
       return fail(err)
     }
     progress.identity = { objectName: identity.objectName, brand: identity.brand, model: identity.model }
-    progress.triage = triaged
     const research = Boolean(this.env.CLONVO_API_KEY) && (!triaged || triaged.hasDocs >= 0.4 || Boolean(identity.model))
 
     // 2a. Fast research (~2 s): one cited answer about dimensions and fasteners. The planner
@@ -248,7 +238,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
     let specFacts: ResearchFindings | null = null
     if (research) {
       progress.phase = 'researching'
-      progress.research = { status: 'searching', queries: [identity.specQuestion, ...identity.queries], sources: [] }
+      progress.research = { status: 'searching' }
       await saveProgress()
       specFacts = await step
         .do('research-answer', { retries: { limit: 1, delay: '2 seconds' }, timeout: '1 minute' }, () =>
@@ -258,9 +248,9 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
           console.warn('spec answer failed', err)
           return null
         })
-      progress.research = { status: 'reading', queries: identity.queries, sources: specFacts?.sources ?? [] }
+      progress.research = { status: 'reading' }
     } else {
-      progress.research = { status: this.env.CLONVO_API_KEY ? 'not_needed' : 'skipped', queries: [], sources: [] }
+      progress.research = { status: this.env.CLONVO_API_KEY ? 'not_needed' : 'skipped' }
     }
 
     // 2b. Slow research: manual / teardown pages + the cited answer → reference sheet for the
@@ -306,7 +296,6 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
         await setFields({ fal_job: null, progress: JSON.stringify(progress) })
         const images = await loadImages()
 
-        let thoughtBuf = ''
         let latest: Analysis | null = null
         let lastWrite = 0
         let writes: Promise<unknown> = Promise.resolve()
@@ -332,11 +321,8 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
           specFacts: specFacts?.notes || null,
           triage: triaged,
           thinkingLevel: thinking,
-          onThought: (chunk) => {
+          onThought: () => {
             firstThought ||= Date.now()
-            thoughtBuf = (thoughtBuf + chunk).slice(-2000)
-            progress.thought = thoughtHeadline(thoughtBuf)
-            save()
           },
           onPartial: (partial, partsFinal) => {
             if (partial.parts.length && !firstPart) {
@@ -344,7 +330,6 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
               void mark({ name: 'planner.thinking', start: t0, end: firstPart, note: 'request → first part on screen' })
             }
             latest = { ...partial, triage: triaged }
-            progress.partsFinal = partsFinal
             save()
             if (partsFinal && !early && this.env.FAL_KEY && partial.parts.length > 0) {
               void mark({ name: 'planner.parts', start: firstPart || t0, end: Date.now(), note: `${partial.parts.length} parts streamed` })
@@ -357,8 +342,6 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
         await early
         await writes
         analysis.triage = triaged
-        progress.thought = null
-        progress.partsFinal = true
         await setFields({
           analysis: JSON.stringify(analysis),
           progress: JSON.stringify(progress),
@@ -379,8 +362,8 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
     // Attach the reference: official dimensions win on an exact match.
     progress.research = research
       ? reference
-        ? { status: 'done', queries: identity.queries, sources: reference.sources, match: reference.match }
-        : { status: 'failed', queries: identity.queries, sources: specFacts?.sources ?? [] }
+        ? { status: 'done', match: reference.match }
+        : { status: 'failed' }
       : progress.research
     analysis.reference = reference
     analysis.sources = reference?.sources ?? specFacts?.sources ?? []
@@ -390,7 +373,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
     } else if (!specFacts && (!reference || reference.match === 'none')) analysis.dimensionsSource = 'estimate'
     const groups = analysis.groups ?? []
     progress.phase = 'writing'
-    progress.agents = groups.map((g) => ({ id: g.id, name: g.name, status: 'running' as const }))
+    progress.agents = groups.map((g) => ({ id: g.id, name: g.name }))
     await step.do('attach-reference', async () => {
       await setFields({ analysis: JSON.stringify(analysis), progress: JSON.stringify(progress) })
     })
@@ -401,12 +384,6 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
       const rows = await photoRows()
       return rows[Math.min(analysis.bestPhotoIndex, rows.length - 1)]
     }
-    const markAgent = (i: number, status: 'done' | 'failed') =>
-      db
-        .prepare(`UPDATE scans SET progress = json_set(progress, '$.agents[${i}].status', ?) WHERE id = ?`)
-        .bind(status, scanId)
-        .run()
-        .catch(() => {})
 
     const writeGroup = async (i: number, repair?: string) => {
       const row = await bestRow()
@@ -428,18 +405,13 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
           .do(`steps-${i}-${g.id}`, { retries: { limit: 2, delay: '3 seconds', backoff: 'exponential' }, timeout: '3 minutes' }, () =>
             timed(
               `writer.${g.name}`,
-              async () => {
-                const result = await writeGroup(i)
-                await markAgent(i, 'done')
-                return result
-              },
+              () => writeGroup(i),
               (r) => `${r.steps.length} steps · ${r.notes.length} handoff note${r.notes.length === 1 ? '' : 's'}`,
             ),
           )
           .catch(async (err): Promise<GroupResult> => {
             // One agent failing shouldn't sink the scan: fall back to a single generic step for its parts.
             console.warn(`step writer for ${g.name} failed`, err)
-            await markAgent(i, 'failed')
             const steps: Step[] = [
               {
                 partIds: g.partIds,
@@ -467,7 +439,6 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
     if (toRepair.length) {
       progress.phase = 'reviewing'
       progress.agents = []
-      progress.thought = `Reviewer: fixing ${issues.length} issue${issues.length === 1 ? '' : 's'} in ${toRepair.map((i) => groups[i].name).join(', ')}`
       await step.do('review-start', async () => {
         await saveProgress()
       })
@@ -504,7 +475,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
     analysis = await step.do('finish-analysis', async () => {
       const merged: Analysis = { ...analysis, groups: order.map((i) => groups[i]), steps: order.flatMap((i) => results[i].steps), review }
       const hasFal = Boolean(this.env.FAL_KEY)
-      const done: ScanProgress = { thought: null, partsFinal: true, fal: null, research: null, agents: [] }
+      const done: ScanProgress = { fal: null, research: null, agents: [] }
       await setFields({
         analysis: JSON.stringify(merged),
         progress: JSON.stringify(done),
@@ -628,7 +599,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
         if (finished.size + failed.size === reported) continue
         reported = finished.size + failed.size
         await step.do(`progress-3d-${i}`, async () => {
-          const p: ScanProgress = { thought: null, partsFinal: true, fal: { done: finished.size, total: jobs.length } }
+          const p: ScanProgress = { fal: { done: finished.size, total: jobs.length } }
           await setFields({
             progress: JSON.stringify(p),
             model_files: files.length ? JSON.stringify(files) : null,

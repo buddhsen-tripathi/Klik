@@ -232,7 +232,6 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
             <AssistButtons
               agent={agent}
               coach={coach}
-              canCoach={canWatch}
               onCoach={() => (coach ? stopCoach() : startCoach())}
               onAsk={() => (agent.active ? endAgent() : void agent.start())}
             />
@@ -257,7 +256,7 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
           <ProgressCheckSheet scanId={scan.id} mode={mode} initialNote={checking.note} onDone={onRecovery} onClose={() => setChecking(null)} />
         </Suspense>
       )}
-      {canWatch && <VoiceAgent agent={agent} coach={coach} onEnd={endAgent} launcher={false} />}
+      {canWatch && <VoiceAgent agent={agent} coach={coach} onEnd={endAgent} />}
     </main>
   )
 }

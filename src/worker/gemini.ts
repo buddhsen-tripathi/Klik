@@ -1,6 +1,7 @@
 import { NonRetryableError } from 'cloudflare:workflows'
 import { parsePartialJson } from './partial-json'
 import type { Analysis, Group, Identification, ObjectIdentity, Part, Reference, RemovalDirection, Source, Step, Triage, Handoff } from '../shared/types'
+import { partLabel } from '../shared/parts'
 
 const API = 'https://generativelanguage.googleapis.com/v1beta/models'
 
@@ -582,7 +583,7 @@ export async function writeGroupSteps(opts: {
   const group = groups[groupIndex]
   const mine = new Set(group.partIds)
   const describe = (p: Part) =>
-    `- ${p.id}: ${(p.quantity ?? 1) > 1 ? `${p.quantity}x ` : ''}${p.name}${p.spec ? ` [${p.spec}]` : ''} (${p.kind === 'fastener' ? 'fastener, ' : ''}${p.material}${p.visible ? '' : ', hidden'}; comes off ${p.removalDirection})`
+    `- ${p.id}: ${partLabel(p)} (${p.kind === 'fastener' ? 'fastener, ' : ''}${p.material}${p.visible ? '' : ', hidden'}; comes off ${p.removalDirection})`
   const whole = groups.length === 1
   const before = groups.slice(0, groupIndex).map((g) => g.name)
   const after = groups.slice(groupIndex + 1).map((g) => g.name)

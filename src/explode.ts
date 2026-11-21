@@ -26,10 +26,7 @@ export const DIRECTION_VECTORS: Record<RemovalDirection, [number, number, number
   back: [0, 0, -1],
 }
 
-/** Steps in the order the user follows them in this mode. */
-export function orderedSteps(analysis: Analysis, mode: Mode) {
-  return mode === 'disassemble' ? analysis.steps : [...analysis.steps].reverse()
-}
+export { orderedSteps } from './shared/parts'
 
 /** Which disassembly step takes each part off (parts no step touches stay on the object). */
 export function removalOrder(analysis: Analysis): Map<string, number> {

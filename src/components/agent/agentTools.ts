@@ -2,6 +2,7 @@ import { agentSearch, reportStepProblem } from '../../api'
 import type { Mode } from '../../explode'
 import type { Analysis, Part, Recovery, Step } from '../../shared/types'
 import type { FunctionDeclaration } from './liveSession'
+import { partLabel } from '../../shared/parts'
 
 /** What the agent can see of the app right now. */
 export interface AgentSnapshot {
@@ -106,8 +107,7 @@ export const TOOLS: FunctionDeclaration[] = [
   { name: 'end_conversation', description: 'The user is done talking (bye, thanks that is all, stop listening).' },
 ]
 
-const qty = (p: Part) => ((p.quantity ?? 1) > 1 ? `${p.quantity}x ` : '')
-const partLine = (p: Part) => `${qty(p)}${p.name}${p.spec ? ` [${p.spec}]` : ''}${p.kind === 'fastener' ? ' (fastener)' : ''}`
+const partLine = (p: Part) => `${partLabel(p)}${p.kind === 'fastener' ? ' (fastener)' : ''}`
 
 function stepText(s: AgentSnapshot, i: number): string {
   const step = s.steps[i]

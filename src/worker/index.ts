@@ -8,6 +8,7 @@ import { identifyFrame } from './gemini'
 import assist from './routes/assist'
 import feedback from './routes/feedback'
 import { ALLOWED_TYPES, fileUrl, parseJson, toBase64 } from './util'
+import { orderedSteps } from '../shared/parts'
 
 export { ScanWorkflow } from './workflow'
 
@@ -174,7 +175,7 @@ app.post('/api/scans/:id/check', async (c) => {
   const { analysis, recovery: savedRecovery } = await checkContext(c.env.DB, c.req.param('id'))
   if (!analysis) return c.json({ error: 'scan has no steps yet' }, 404)
   // Same ordering as the app: assembly is the disassembly list reversed; ?plan=1 = the fix plan.
-  const ordered = mode === 'disassemble' ? analysis.steps : [...analysis.steps].reverse()
+  const ordered = orderedSteps(analysis, mode)
   const recovery = c.req.query('plan') === '1' ? savedRecovery : null
   const steps = recovery && recovery.mode === mode ? planSteps(ordered, recovery) : ordered
   const step = steps[index]

@@ -1,6 +1,7 @@
 import type { Analysis, Recovery, Step } from '../shared/types'
 import { decide, image, yes } from './decisions'
 import { generateJson, normalizeSteps, STEP_ITEM, type InlineImage, type ThinkingLevel } from './gemini'
+import { orderedSteps, partLabel } from '../shared/parts'
 
 /**
  * "Check my progress": the user has followed some of the guide (maybe not quite right) and
@@ -97,12 +98,12 @@ export async function checkProgress(opts: {
   note: string | null
 }): Promise<Omit<Recovery, 'photoUrl' | 'createdAt'>> {
   const { analysis, mode, photo } = opts
-  const steps = mode === 'disassemble' ? analysis.steps : [...analysis.steps].reverse()
+  const steps = orderedSteps(analysis, mode)
   const probs = await stepProbabilities(opts.apiKey, photo, analysis, steps, mode)
   const taking = mode === 'disassemble'
 
   const partLines = analysis.parts
-    .map((p) => `- ${p.id}: ${(p.quantity ?? 1) > 1 ? `${p.quantity}x ` : ''}${p.name}${p.spec ? ` [${p.spec}]` : ''}`)
+    .map((p) => `- ${p.id}: ${partLabel(p)}`)
     .join('\n')
   const stepLines = steps
     .map((s, i) => `${i}. ${s.title} (parts: ${s.partIds.join(', ')}) - ${taking ? s.disassembly : s.assembly} [quick check: ${Math.round(probs[i] * 100)}% likely done]`)

@@ -2,6 +2,7 @@ import type { Analysis, Step } from '../shared/types'
 import { generateJson, normalizeSteps, STEP_ITEM, type ThinkingLevel } from './gemini'
 import { forgetCheckContext } from './checkContext'
 import { parseJson, toBase64 } from './util'
+import { partLabel } from '../shared/parts'
 
 /**
  * Learning from use: every problem someone hits on a step is saved. When the user says a step is
@@ -52,7 +53,7 @@ export async function maybeReviseStep(env: Env, scanId: string, stepIndex: numbe
 
   const partLines = analysis.parts
     .filter((p) => step.partIds.includes(p.id))
-    .map((p) => `- ${p.id}: ${(p.quantity ?? 1) > 1 ? `${p.quantity}x ` : ''}${p.name}${p.spec ? ` [${p.spec}]` : ''}`)
+    .map((p) => `- ${p.id}: ${partLabel(p)}`)
     .join('\n')
   const ref = analysis.reference && analysis.reference.match !== 'none' ? `Documentation notes: ${analysis.reference.notes.join(' ')}\n` : ''
   const raw = await generateJson({

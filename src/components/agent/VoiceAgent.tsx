@@ -1,4 +1,4 @@
-import { LoaderCircle, Mic } from 'lucide-react'
+import { LoaderCircle } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { VoiceAgent as Agent } from './useVoiceAgent'
 import './VoiceAgent.css'
@@ -16,7 +16,7 @@ const STATUS: Record<Agent['status'], string> = {
  * Floating voice helper: tap the orb and talk ("next", "which screw is this?", "I think I
  * messed up the wheels"). Live captions show what it heard and what it says.
  */
-export default function VoiceAgent({ agent, coach = false, onEnd, launcher = true }: { agent: Agent; coach?: boolean; onEnd?: () => void; launcher?: boolean }) {
+export default function VoiceAgent({ agent, coach = false, onEnd }: { agent: Agent; coach?: boolean; onEnd?: () => void }) {
   const orb = useRef<HTMLButtonElement>(null)
   const [typed, setTyped] = useState('')
   const captions = useRef<HTMLDivElement>(null)
@@ -42,15 +42,8 @@ export default function VoiceAgent({ agent, coach = false, onEnd, launcher = tru
 
   const open = agent.active || agent.status === 'error'
 
-  if (!open) {
-    if (!launcher) return null
-    return (
-      <button className="agent-fab" onClick={() => void agent.start()} aria-label="Talk to the helper">
-        <Mic className="agent-fab-icon" aria-hidden />
-        <span>Ask</span>
-      </button>
-    )
-  }
+  // Started from the dock (AssistButtons); nothing to show until then.
+  if (!open) return null
 
   return (
     <section className={`agent-panel ${agent.status}`} aria-label="Voice helper" aria-live="polite">
