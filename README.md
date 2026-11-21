@@ -1,72 +1,137 @@
 # Assemble on the Go
 
-Point your phone at an object: the app names it live, guides you around it for a few angles, and builds a 3D model with step-by-step instructions to take it apart or put it together, in the background while you scan the next thing. Runs in the phone browser and deploys as a single Cloudflare Worker.
+**Point your phone at an object and get a 3D model of it, plus step-by-step instructions to take it apart or put it back together, with a voice coach that watches through the camera while you work.**
+
+It runs in the phone browser (no app to install) and deploys as a single Cloudflare Worker.
+
+Live demo: https://assemble-on-the-go.buddhsen-work.workers.dev
+
+---
+
+## Features
+
+- **Live camera scan.** The app names what it sees in real time and guides you around the object for a few angles. Shots are taken automatically when you rotate the object and hold it still.
+- **A 3D model that keeps the real shape.** Each visible part is reconstructed from your photos with SAM 3D, keeping its texture and curves. The model is then sized against the estimated real dimensions as a sanity check, not reshaped.
+- **Parts that move on their own.** Every part is a separate object. Next / Back lift each part out and set it down in a parts tray in front of the model (taking apart), or move it back into place (putting together).
+- **Hidden parts from reference photos.** Parts the camera can't see (an inner chassis, axles) are looked up with web image search. A close photo is used only when a strict check says it shows exactly that part. Otherwise the part stays a simple block. Your scan is never replaced, and every reference photo is credited with a link to its source.
+- **Real specs.** Screws, sizes and tools come from the object's manual and spec pages found on the web, not from guesses.
+- **Voice helper.** Talk to the app hands-free: "next step", "show me the left wheel", "what size is that screw?". It drives the whole app through tools.
+- **Live coach.** The camera and the voice helper watch you work. The coach advances the steps when you finish one, warns you when something looks wrong or unsafe, and otherwise stays quiet.
+- **Fix the plan.** Went off-script? Show the camera (or a photo) and it works out what's done, what's wrong, writes fix-up steps and tells you where to carry on.
+- **Background processing.** Scan the next thing while the last one builds; a tray tracks every job.
+- **Observability.** Every scan, API request, voice session and tool call is sent to Clonvo Traces as OpenTelemetry spans.
+- **Mobile first.** The 3D view stays pinned at the top, the steps scroll below it, and Back / Next plus the voice controls sit in a bottom dock in thumb reach. Rendering is on-demand and three.js loads lazily, so it stays light on phones.
 
 ## How it works
 
 ```
-Live camera ──(steady + new view, ~512 px frame)──► POST /api/identify ──► Gemini flash-lite: name + box
+Phone camera ── steady + new view ──► /api/identify ──► Gemini: "what is this?" + box
    │
-   │  1-6 angles (front, left, back, right, top…), resized to 1600 px in the browser
-   ▼  uploaded in the background; a tray tracks every scan
-Worker (Hono)  ──►  R2 (photos, GLBs)   D1 (scans)
+   │  1-6 angles, resized in the browser, uploaded in the background
+   ▼
+Worker (Hono) ──► R2 (photos, GLB models)   D1 (scans, timings, fix plans)
    │
-   └─ ScanWorkflow (Cloudflare Workflows, one per scan)
-        1. Gemini: reads all angles, picks the best photo, returns parts, 2D boxes on that photo,
-           a rough block model ("blockout") and the steps, as JSON
-        2. fal SAM 3D Objects (on the best photo): one box prompt per visible part → one combined GLB, one node per part
-        3. copy the GLB into R2
+   └─ ScanWorkflow (Cloudflare Workflows, one per scan; independent steps run in parallel)
+        1. Gemini reads all angles: parts, 2D boxes, size estimate, a block model
+        2. Clonvo web search: manual / spec pages for real fastener sizes and tools
+        3. Step-writer agents, one per subassembly, in parallel
+        4. fal SAM 3D Objects: one job per visible part → GLBs
+           + hidden parts: Clonvo image search → strict Gemini pick → SAM 3D on that photo
+        5. Save to R2, export the trace to Clonvo
+
+Browser ──(ephemeral token)──► Gemini Live (voice + camera frames, tool calls)
+        └─ live coach: Gemini Decisions API checks each step against the camera
 ```
 
-- **Camera:** motion is checked on a 32×24 grayscale thumbnail ~3×/s. Gemini is only called when the view is steady *and* has changed, so a still scene costs one call. The stream stops when the tab is hidden. **Auto** mode takes a shot each time you rotate the object and hold still.
-- The **blockout** shows up as soon as Gemini finishes, so the app still works if 3D generation fails or `FAL_KEY` isn't set.
-- The **3D scan** is never loaded automatically. The user taps "Load 3D scan · N MB".
-- The viewer renders **on demand** (no constant render loop), caps the pixel ratio at 1.5 and frees GPU memory when closed. three.js is only downloaded when a scan is opened.
+## Run it locally
 
-## Run locally
+You need Node 20+ and a Cloudflare account (only for deploying).
 
 ```sh
 npm install
-cp .dev.vars.example .dev.vars    # add GEMINI_API_KEY (required) and FAL_KEY (optional)
+cp .dev.vars.example .dev.vars    # fill in the keys below
 npm run db:migrate:local
-npm run dev                       # http://localhost:5173, with the API, D1, R2 and Workflows emulated
+npm run dev                       # http://localhost:5173 with the API, D1, R2 and Workflows emulated
 ```
 
-**Live camera needs HTTPS** (or localhost). On a phone over plain `http://192.168…` the app falls back to the photo picker. To test the camera on a phone, deploy (workers.dev is HTTPS) or tunnel the dev server, e.g. `cloudflared tunnel --url http://localhost:5173`.
+| Key | Needed? | What for |
+|---|---|---|
+| `GEMINI_API_KEY` | required | Analysis, steps, live camera, voice helper |
+| `FAL_KEY` | optional | 3D scans with SAM 3D. Without it you get the block model only |
+| `CLONVO_API_KEY` | optional | Web specs, reference photos and Clonvo Traces |
+
+The live camera needs HTTPS (or localhost). To try it on a phone, deploy it (workers.dev is HTTPS) or tunnel the dev server, e.g. `cloudflared tunnel --url http://localhost:5173`.
 
 ## Deploy
 
 ```sh
 npx wrangler login
-npx wrangler d1 create assemble-db          # paste the database_id into wrangler.jsonc
+npx wrangler d1 create assemble-db           # put the database_id in wrangler.jsonc
 npx wrangler r2 bucket create assemble-files
 npm run db:migrate:remote
 npx wrangler secret put GEMINI_API_KEY
-npx wrangler secret put FAL_KEY
+npx wrangler secret put FAL_KEY              # optional
+npx wrangler secret put CLONVO_API_KEY       # optional
 npm run deploy
 ```
 
-Models are set in `wrangler.jsonc`: `GEMINI_MODEL` for the full analysis (default `gemini-4-neon`) and `IDENTIFY_MODEL` for the live camera (default `gemini-3.5-flash-lite`).
+Models and limits are set in `wrangler.jsonc` (`GEMINI_MODEL`, `STEPS_MODEL`, `IDENTIFY_MODEL`, `LIVE_MODEL`, `ANALYSIS_THINKING`, `MAX_3D_JOBS`).
 
-## Layout
+## Project layout
 
 | Path | What |
 |---|---|
-| `src/worker/index.ts` | API routes: create/list/get scans, serve files from R2 |
+| `src/worker/index.ts` | API routes and per-request tracing |
 | `src/worker/workflow.ts` | The scan pipeline |
-| `src/worker/gemini.ts` | Gemini prompt, JSON schema and output clean-up |
+| `src/worker/gemini.ts`, `decisions.ts` | Gemini prompts and schemas, Decisions API client |
 | `src/worker/fal.ts` | fal queue client for SAM 3D |
-| `src/shared/types.ts` | Types shared by Worker and app |
-| `src/components/CameraScreen.tsx` | Live camera: identify overlay, rotate guide, auto capture |
-| `src/camera.ts` | Camera stream hook and cheap motion detection |
-| `src/jobs.ts`, `src/components/JobTray.tsx` | Background upload/processing queue and tray |
-| `src/components/Capture.tsx` | Photo-picker fallback (no camera / no HTTPS) |
-| `src/components/ScanPage.tsx` | Progress, viewer and steps |
-| `src/components/Viewer3D.tsx` | Blockout and scanned model, exploded-view animation |
-| `src/explode.ts` | Which parts are out / highlighted at each step |
+| `src/worker/clonvo.ts`, `referenceImage.ts` | Web specs, image search and the reference-photo check |
+| `src/worker/recovery.ts` | "Fix the plan" from a photo of your progress |
+| `src/worker/otel.ts`, `tracing.ts` | OpenTelemetry export to Clonvo Traces |
+| `src/components/camera/` | Live camera, identify overlay, live step check |
+| `src/components/scan/` | Scan page, workbench layout, toolbar, dock buttons |
+| `src/components/viewer/` | 3D viewer: scanned model, block model, parts tray, auto framing |
+| `src/components/steps/` | Steps panel, step card, progress bar, dock |
+| `src/components/agent/` | Voice helper and live coach (Gemini Live over WebSocket) |
+| `src/components/recovery/` | Progress check and fix plan UI |
+| `src/explode.ts` | Where each part is at each step |
+| `src/shared/types.ts` | Types shared by the Worker and the app |
 
-## Known gaps
+## Known limitations
 
-- No auth or rate limiting: anyone with the URL can spend your Gemini/fal credits. Add Cloudflare Turnstile or a passcode before sharing it publicly.
-- The SAM 3D part split assumes the combined GLB has one node per box prompt, in order. If it doesn't, the viewer shows the scan as one piece (steps still work on the blockout).
-- Scans sometimes come back sideways. Use the "Rotate scan" button.
+- There is no auth or rate limiting, so anyone with the URL can spend your API credits. Add Cloudflare Turnstile or a passcode before sharing it widely.
+- SAM 3D works from a single photo per part, so the backs of parts are inferred.
+- Scans occasionally come back sideways. Use the 90° button to fix it.
+
+## Contributing
+
+Issues and pull requests are welcome. Before you open a PR, run `npm run build` and `npm run lint`, and keep new UI in small per-feature components.
+
+## Credits
+
+This project is built on these open-source projects:
+
+| Project | Used for | License |
+|---|---|---|
+| [React](https://github.com/facebook/react) | UI | MIT |
+| [three.js](https://github.com/mrdoob/three.js) | 3D rendering | MIT |
+| [@react-three/fiber](https://github.com/pmndrs/react-three-fiber) and [@react-three/drei](https://github.com/pmndrs/drei) (Poimandres) | React renderer for three.js, GLTF loading, controls | MIT |
+| [Hono](https://github.com/honojs/hono) | Worker API routing | MIT |
+| [Vite](https://github.com/vitejs/vite) and [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react) | Dev server and build | MIT |
+| [Cloudflare workers-sdk](https://github.com/cloudflare/workers-sdk) (Wrangler, `@cloudflare/vite-plugin`) | Local emulation and deploys | MIT / Apache-2.0 |
+| [TypeScript](https://github.com/microsoft/TypeScript) | Types | Apache-2.0 |
+| [Oxc / oxlint](https://github.com/oxc-project/oxc) | Linting | MIT |
+| [SAM 3D Objects](https://github.com/facebookresearch/sam-3d-objects) (Meta AI) | Photo → 3D part reconstruction, run via fal | [SAM License](https://github.com/facebookresearch/sam-3d-objects/blob/main/LICENSE) |
+
+These hosted services power it:
+
+- [Google Gemini API](https://ai.google.dev/) for analysis, step writing, the Decisions API and Gemini Live voice.
+- [fal.ai](https://fal.ai/) for hosting SAM 3D Objects inference.
+- [Clonvo](https://clonvo.com/) for web search, image search and Traces.
+- [Cloudflare](https://www.cloudflare.com/) for Workers, Workflows, D1 and R2.
+
+Reference photos used for hidden parts belong to their owners. The app shows the source link next to each part that uses one.
+
+## License
+
+[MIT](LICENSE)
