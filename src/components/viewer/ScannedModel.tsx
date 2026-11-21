@@ -2,11 +2,14 @@ import { useGLTF } from '@react-three/drei'
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { useDeferredValue, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import { DIRECTION_VECTORS, explodeDistance } from '../../explode'
+import { DIRECTION_VECTORS, explodeDistance, removalOrder } from '../../explode'
 import BlockoutModel from './BlockoutModel'
 import { ACTIVE_COLOR, BLACK, EASE, EPS, NO_STATE, ORIENTS } from './constants'
 import { layoutMatrix } from './layout'
 import { principalExtents } from './measure'
+import { splitInstances } from './splitInstances'
+import AutoFrame from './AutoFrame'
+import { blockFootprint, frameWithTray, layoutTray } from './tray'
 import type { SizeCheck, ViewerProps } from './types'
 
 /** SAM 3D meshes (one file per parallel job), each placed where it was in the photo, one node per part. */
@@ -30,6 +33,8 @@ export default function ScannedModel(props: ViewerProps) {
     const root = new THREE.Group()
     const objects: THREE.Object3D[] = []
     const partIds: string[] = []
+    const geometries: THREE.BufferGeometry[] = [] // made here (split copies), disposed with `prepared`
+    const quantity = (id: string) => analysis.parts.find((p) => p.id === id)?.quantity ?? 1
     files.forEach((file, fi) => {
       const scene = gltfs[fi].scene.clone(true)
       // Own material per mesh so highlighting one part doesn't light up the others.
@@ -47,15 +52,21 @@ export default function ScannedModel(props: ViewerProps) {
           const holder = new THREE.Group()
           layoutMatrix(file.layouts[k]).decompose(holder.position, holder.quaternion, holder.scale)
           holder.add(n)
-          root.add(holder)
-          objects.push(holder)
+          // "4 wheels" scanned as one mesh → four objects that each move on their own.
+          const copies = splitInstances(holder, quantity(file.partIds[k]))
+          copies?.forEach((c) => c.traverse((o) => (o as THREE.Mesh).isMesh && geometries.push((o as THREE.Mesh).geometry)))
+          for (const obj of copies ?? [holder]) {
+            root.add(obj)
+            objects.push(obj)
+            partIds.push(file.partIds[k])
+          }
         })
       } else {
         // Older single-file scans: the file is already one scene.
         root.add(scene)
         objects.push(...nodes)
+        partIds.push(...file.partIds.slice(0, nodes.length))
       }
-      partIds.push(...file.partIds.slice(0, nodes.length))
     })
     const split = partIds.length > 1 && objects.length === partIds.length
     // Collect each node's materials once, so the frame loop never has to traverse.
@@ -75,12 +86,18 @@ export default function ScannedModel(props: ViewerProps) {
       })
       return list
     })
-    return { root, objects, split, materials, partIds, bases: objects.map((o) => o.position.clone()) }
-  }, [files, gltfs, anisotropy])
+    return { root, objects, split, materials, partIds, geometries, bases: objects.map((o) => o.position.clone()) }
+  }, [files, gltfs, anisotropy, analysis.parts])
   const modelPartIds = prepared.partIds
 
   // Material clones belong to one `prepared`; drop them when a new file is added.
-  useEffect(() => () => prepared.materials.flat().forEach((m) => m.dispose()), [prepared])
+  useEffect(
+    () => () => {
+      prepared.materials.flat().forEach((m) => m.dispose())
+      prepared.geometries.forEach((g) => g.dispose())
+    },
+    [prepared],
+  )
 
   // Free GPU memory when the scan is closed (not when a new part arrives), and drop it from drei's cache.
   const loaded = useRef({ gltfs, urls })
@@ -136,33 +153,97 @@ export default function ScannedModel(props: ViewerProps) {
     [],
   )
 
+  // The parts tray: each scanned piece (and each part SAM 3D couldn't see, as a box) gets its own
+  // spot on the ground, sized from its real installed bounding box. Recomputed only when the
+  // scan or its fit changes, so spots never shuffle between steps.
+  const removedAt = useMemo(() => removalOrder(analysis), [analysis])
+  const tray = useMemo(() => {
+    if (!prepared.split) return null
+    const { root, objects, bases } = prepared
+    const saved = objects.map((o) => o.position.clone())
+    objects.forEach((o, i) => o.position.copy(bases[i]))
+    root.updateMatrixWorld(true)
+    // World → the fitted group's space → scene cm (works whether or not root is mounted yet).
+    const toScene = root.matrix
+      .clone()
+      .multiply(root.matrixWorld.clone().invert())
+      .premultiply(new THREE.Matrix4().compose(fit.position, new THREE.Quaternion(), new THREE.Vector3(fit.scale, fit.scale, fit.scale)))
+    const boxes = objects.map((o) => new THREE.Box3().setFromObject(o).applyMatrix4(toScene))
+    objects.forEach((o, i) => o.position.copy(saved[i]))
+    root.updateMatrixWorld(true)
+    const whole = boxes.reduce((acc, b) => acc.union(b), new THREE.Box3())
+    const size = whole.getSize(new THREE.Vector3())
+    const items: { key: string; w: number; d: number; order: number }[] = []
+    boxes.forEach((b, i) => {
+      const at = removedAt.get(modelPartIds[i])
+      if (at === undefined) return
+      const s = b.getSize(new THREE.Vector3())
+      items.push({ key: `o${i}`, w: s.x, d: s.z, order: at * 1000 + i })
+    })
+    for (const p of analysis.parts) {
+      const at = removedAt.get(p.id)
+      if (at === undefined || modelPartIds.includes(p.id)) continue
+      items.push({ key: p.id, w: p.size[0], d: p.shape === 'cylinder' ? p.size[0] : p.size[2], order: at * 1000 + 999 })
+    }
+    items.sort((a, b) => a.order - b.order)
+    const slots = layoutTray(items, { w: size.x, d: size.z })
+    const blockSlots = new Map(analysis.parts.filter((p) => slots.has(p.id)).map((p) => [p.id, slots.get(p.id)!]))
+    return { boxes, slots, blockSlots, whole }
+  }, [prepared, fit, analysis.parts, removedAt, modelPartIds])
+
+  // Keep the object and every part on the tray in view.
+  const frame = useMemo(() => {
+    if (!tray) return null
+    const v = new THREE.Vector3()
+    return frameWithTray(tray.whole, [
+      ...tray.boxes.flatMap((b, i) => {
+        const slot = tray.slots.get(`o${i}`)
+        if (!slot) return []
+        b.getSize(v)
+        return [{ key: `o${i}`, ...slot, w: v.x, h: v.y, d: v.z, inUse: !!states.get(modelPartIds[i])?.tray }]
+      }),
+      ...analysis.parts.flatMap((p) => {
+        const slot = tray.blockSlots.get(p.id)
+        return slot ? [{ key: p.id, ...slot, ...blockFootprint(p), inUse: !!states.get(p.id)?.tray }] : []
+      }),
+    ])
+  }, [tray, states, modelPartIds, analysis.parts])
+
   // Per-node targets are recomputed only when the step, selection or orientation changes.
   const targets = useMemo(() => {
-    if (!prepared.split) return []
+    if (!prepared.split || !tray) return []
     const { root } = prepared
     root.updateMatrixWorld(true)
     const rootWorldInv = root.matrixWorld.clone().invert()
     return prepared.objects.map((obj, i) => {
       const part = byId.get(modelPartIds[i])
       const state = (part && states.get(part.id)) ?? NO_STATE
-      const dist = part ? explodeDistance(analysis, part.size) * state.offset : 0
-      const dir = part ? DIRECTION_VECTORS[part.removalDirection] : [0, 0, 0]
-      // Offset is in scene cm. Undo the fit scale, then the node's parent transform relative to the
-      // fitted group (root rotation + any wrapper nodes), so it works whether or not root is mounted yet.
+      const slot = tray.slots.get(`o${i}`)
+      // Move in scene cm: to its tray spot (standing on the ground), or partway out along its removal direction.
+      if (state.tray && slot) {
+        const box = tray.boxes[i]
+        const c = box.getCenter(new THREE.Vector3())
+        tmp.v.set(slot.x - c.x, -box.min.y, slot.z - c.z)
+      } else {
+        const dist = part ? explodeDistance(analysis, part.size) * state.offset : 0
+        const dir = part ? DIRECTION_VECTORS[part.removalDirection] : [0, 0, 0]
+        tmp.v.set(dir[0] * dist, dir[1] * dist, dir[2] * dist)
+      }
+      // Undo the fit scale, then the node's parent transform relative to the fitted group
+      // (root rotation + any wrapper nodes), so it works whether or not root is mounted yet.
       tmp.m.copy(root.matrix).multiply(rootWorldInv).multiply(obj.parent!.matrixWorld).decompose(tmp.p, tmp.q, tmp.s)
       tmp.v
-        .set(dir[0] * dist, dir[1] * dist, dir[2] * dist)
         .divideScalar(fit.scale)
         .applyQuaternion(tmp.q.invert())
         .divideScalar(tmp.s.x || 1)
       return {
         position: prepared.bases[i].clone().add(tmp.v),
-        opacity: state.faded ? 0.12 : 1,
+        opacity: 1,
         highlight: state.active || selectedId === part?.id,
         active: state.active,
       }
     })
-  }, [prepared, states, selectedId, byId, modelPartIds, analysis, tmp, fit])
+  }, [prepared, states, selectedId, byId, modelPartIds, analysis, tmp, fit, tray])
 
   useEffect(() => {
     targets.forEach((t, i) => {
@@ -212,7 +293,7 @@ export default function ScannedModel(props: ViewerProps) {
     () =>
       new Set(
         analysis.parts
-          .filter((p) => !modelPartIds.includes(p.id) && (states.get(p.id)?.active || selectedId === p.id))
+          .filter((p) => !modelPartIds.includes(p.id) && (states.get(p.id)?.tray || states.get(p.id)?.active || selectedId === p.id))
           .map((p) => p.id),
       ),
     [analysis.parts, modelPartIds, states, selectedId],
@@ -223,7 +304,8 @@ export default function ScannedModel(props: ViewerProps) {
       <group position={fit.position} scale={fit.scale}>
         <primitive object={prepared.root} onClick={click} />
       </group>
-      {prepared.split && hidden.size > 0 && <BlockoutModel {...props} ghost only={hidden} />}
+      {frame && <AutoFrame box={frame.box} frameKey={frame.frameKey} />}
+      {prepared.split && hidden.size > 0 && <BlockoutModel {...props} ghost only={hidden} traySlots={tray?.blockSlots} />}
     </>
   )
 }

@@ -5,9 +5,21 @@ import * as THREE from 'three'
 import { DIRECTION_VECTORS, explodeDistance, type PartState } from '../../explode'
 import type { Part } from '../../shared/types'
 import { ACTIVE_COLOR, BLACK, deg, EASE, EPS, NO_STATE } from './constants'
+import { blockTraySlots, type Slot } from './tray'
 import type { ViewerProps } from './types'
 
-export default function BlockoutModel({ analysis, states, selectedId, onSelect, ghost, only }: ViewerProps & { ghost?: boolean; only?: Set<string> }) {
+
+export default function BlockoutModel({
+  analysis,
+  states,
+  selectedId,
+  onSelect,
+  ghost,
+  only,
+  traySlots,
+}: ViewerProps & { ghost?: boolean; only?: Set<string>; traySlots?: Map<string, Slot> }) {
+  const ownSlots = useMemo(() => (traySlots ? null : blockTraySlots(analysis)), [traySlots, analysis])
+  const slots = traySlots ?? ownSlots!
   return (
     <group>
       {analysis.parts
@@ -18,6 +30,7 @@ export default function BlockoutModel({ analysis, states, selectedId, onSelect, 
             part={part}
             state={states.get(part.id) ?? NO_STATE}
             distance={explodeDistance(analysis, part.size)}
+            slot={slots.get(part.id)}
             selected={selectedId === part.id}
             ghost={ghost}
             onSelect={onSelect}
@@ -31,11 +44,12 @@ function BlockoutPart(props: {
   part: Part
   state: PartState
   distance: number
+  slot?: Slot
   selected: boolean
   ghost?: boolean
   onSelect: (id: string | null) => void
 }) {
-  const { part, state, distance, selected, ghost, onSelect } = props
+  const { part, state, distance, slot, selected, ghost, onSelect } = props
   const group = useRef<THREE.Group>(null)
   const mat = useRef<THREE.MeshStandardMaterial>(null)
   const invalidate = useThree((s) => s.invalidate)
@@ -43,16 +57,20 @@ function BlockoutPart(props: {
   const [w, h, d] = part.size
   const highlight = state.active || selected
 
+  // On the tray: its own spot on the ground. Otherwise in place, or partway out along its removal direction.
   const target = useMemo(
     () =>
-      new THREE.Vector3(
-        part.position[0] + dir[0] * distance * state.offset,
-        part.position[1] + dir[1] * distance * state.offset,
-        part.position[2] + dir[2] * distance * state.offset,
-      ),
-    [part.position, dir, distance, state.offset],
+      state.tray && slot
+        ? new THREE.Vector3(slot.x, h / 2, slot.z)
+        : new THREE.Vector3(
+            part.position[0] + dir[0] * distance * state.offset,
+            part.position[1] + dir[1] * distance * state.offset,
+            part.position[2] + dir[2] * distance * state.offset,
+          ),
+    [part.position, dir, distance, state.offset, state.tray, slot, h],
   )
-  const targetOpacity = state.faded ? 0.12 : ghost ? 0.35 : 1
+  // Faint only while it overlaps the real scan (parts SAM 3D couldn't see); solid on the tray.
+  const targetOpacity = ghost && !state.tray ? 0.35 : 1
 
   // New parts drop in from above and fade in, so the model visibly builds as Gemini streams it.
   useLayoutEffect(() => {

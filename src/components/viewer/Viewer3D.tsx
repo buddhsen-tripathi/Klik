@@ -1,6 +1,8 @@
 import { Grid, OrbitControls } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
-import { Suspense } from 'react'
+import { Suspense, useMemo } from 'react'
+import AutoFrame from './AutoFrame'
+import { blockFrame, blockTraySlots } from './tray'
 import BlockoutModel from './BlockoutModel'
 import ModelErrorBoundary from './ModelErrorBoundary'
 import ScannedModel from './ScannedModel'
@@ -24,6 +26,11 @@ export default function Viewer3D(props: ViewerProps) {
   const height = analysis.dimensions[1]
 
   const blockout = <BlockoutModel {...props} />
+
+  // Frame the object plus the tray spots that are in use right now (approximated with the block sizes).
+  const slots = useMemo(() => blockTraySlots(analysis), [analysis])
+  const { box, frameKey } = useMemo(() => blockFrame(analysis, props.states, slots), [analysis, slots, props.states])
+  const showingScan = props.source === 'scan' && props.modelFiles.length > 0
   return (
     <Canvas
       frameloop="demand"
@@ -66,6 +73,8 @@ export default function Viewer3D(props: ViewerProps) {
         maxPolarAngle={Math.PI * 0.95}
       />
       <SpinDriver on={!!props.spin} />
+      {/* The scanned model frames its own (real-size) tray layout. */}
+      {!showingScan && <AutoFrame box={box} frameKey={frameKey} />}
     </Canvas>
   )
 }

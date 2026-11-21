@@ -4,13 +4,18 @@ export type Mode = 'disassemble' | 'assemble'
 
 /** How a part should look at the current step. */
 export interface PartState {
-  /** 0 = in place, 1 = fully pulled out along its removal direction. */
+  /** 0 = in place, 1 = fully pulled out along its removal direction (the move the current step is about). */
   offset: number
-  /** Faded out because it's already off (disassembly) or not on yet (assembly). */
-  faded: boolean
+  /** Off the object, sitting in its own spot on the parts tray: already taken off, or not fitted yet. */
+  tray: boolean
   /** Part of the current step. */
   active: boolean
 }
+
+const INSTALLED: PartState = { offset: 0, tray: false, active: false }
+const IN_TRAY: PartState = { offset: 0, tray: true, active: false }
+/** The current step's part, lifted partway out of (or hovering just above) its place. */
+const MOVING: PartState = { offset: 0.5, tray: false, active: true }
 
 export const DIRECTION_VECTORS: Record<RemovalDirection, [number, number, number]> = {
   up: [0, 1, 0],
@@ -26,31 +31,33 @@ export function orderedSteps(analysis: Analysis, mode: Mode) {
   return mode === 'disassemble' ? analysis.steps : [...analysis.steps].reverse()
 }
 
+/** Which disassembly step takes each part off (parts no step touches stay on the object). */
+export function removalOrder(analysis: Analysis): Map<string, number> {
+  const removedAt = new Map<string, number>()
+  analysis.steps.forEach((s, i) => s.partIds.forEach((id) => removedAt.has(id) || removedAt.set(id, i)))
+  return removedAt
+}
+
 /**
- * stepIndex = -1 is the overview: assembled object when taking apart,
- * the full kit of loose parts when putting together.
+ * stepIndex = -1 is the overview: assembled object when taking apart, the full kit laid out on
+ * the tray when putting together. Each step moves its parts between the object and the tray.
  */
 export function partStates(analysis: Analysis, mode: Mode, stepIndex: number): Map<string, PartState> {
   const n = analysis.steps.length
-  // Which disassembly step removes each part.
-  const removedAt = new Map<string, number>()
-  analysis.steps.forEach((s, i) => s.partIds.forEach((id) => removedAt.has(id) || removedAt.set(id, i)))
-
+  const removedAt = removalOrder(analysis)
   const states = new Map<string, PartState>()
   for (const part of analysis.parts) {
     const d = removedAt.get(part.id)
-    let state: PartState = { offset: 0, faded: false, active: false }
-
+    let state = INSTALLED
     if (d !== undefined) {
       if (mode === 'disassemble') {
-        if (d < stepIndex) state = { offset: 1, faded: true, active: false }
-        else if (d === stepIndex) state = { offset: 0.6, faded: false, active: true }
+        if (d < stepIndex) state = IN_TRAY
+        else if (d === stepIndex) state = MOVING
       } else {
         // Assembly step j puts back what disassembly step (n - 1 - j) took off.
         const j = n - 1 - d
-        if (stepIndex === -1) state = { offset: 1, faded: false, active: false }
-        else if (j > stepIndex) state = { offset: 1, faded: true, active: false }
-        else if (j === stepIndex) state = { offset: 0.6, faded: false, active: true }
+        if (stepIndex === -1 || j > stepIndex) state = IN_TRAY
+        else if (j === stepIndex) state = MOVING
       }
     }
     states.set(part.id, state)
@@ -73,16 +80,16 @@ export function explodeDistance(analysis: Analysis, partSize: [number, number, n
  */
 export function planStates(analysis: Analysis, mode: Mode, done: Step[], plan: Step[], stepIndex: number): Map<string, PartState> {
   const taking = mode === 'disassemble'
-  const DONE: PartState = taking ? { offset: 1, faded: true, active: false } : { offset: 0, faded: false, active: false }
-  const TODO: PartState = taking ? { offset: 0, faded: false, active: false } : { offset: 1, faded: true, active: false }
+  const DONE = taking ? IN_TRAY : INSTALLED
+  const TODO = taking ? INSTALLED : IN_TRAY
   const states = new Map<string, PartState>()
-  for (const part of analysis.parts) states.set(part.id, { offset: 0, faded: false, active: false })
+  for (const part of analysis.parts) states.set(part.id, INSTALLED)
   for (const s of done) for (const id of s.partIds) states.set(id, DONE)
   plan.forEach((s, j) => {
     const fix = s.group === 'Fix first'
     for (const id of s.partIds) {
-      if (j < stepIndex) states.set(id, fix ? { offset: 0, faded: false, active: false } : DONE)
-      else if (j === stepIndex) states.set(id, { offset: 0.6, faded: false, active: true })
+      if (j < stepIndex) states.set(id, fix ? INSTALLED : DONE)
+      else if (j === stepIndex) states.set(id, MOVING)
       else if (!fix && !states.get(id)?.active) states.set(id, TODO)
     }
   })
