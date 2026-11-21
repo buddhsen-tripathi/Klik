@@ -20,7 +20,7 @@
     {
       "binding": "DB",
       "database_name": "assemble-db",
-      "database_id": "REPLACE_WITH_ID_FROM_wrangler_d1_create",
+      "database_id": "bc4791e9-7ed0-45fa-acc2-39fac5314885",
       "migrations_dir": "migrations"
     }
   ],
