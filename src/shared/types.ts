@@ -154,6 +154,8 @@ export interface ScanView {
   modelFiles: ModelFile[]
   /** Latency waterfall (epoch ms). */
   timings: Timing[]
+  /** Latest "check my progress" result, if any. */
+  recovery: Recovery | null
 }
 
 /** SAM 3D pose of one object: Z-up object space → PyTorch3D camera space (quaternion w,x,y,z). */
@@ -242,4 +244,21 @@ export interface Identification {
   disassemblable: boolean
   /** One short framing tip, e.g. "Step back so the whole chair fits". */
   tip: string
+}
+
+/** "Check my progress": where the user actually is, what went wrong, and how to carry on. */
+export interface Recovery {
+  createdAt: number
+  mode: 'disassemble' | 'assemble'
+  /** One or two sentences, shown and spoken. */
+  summary: string
+  /** One entry per step, in the order the user follows them in this mode. */
+  stepStatus: { index: number; status: 'done' | 'not_done' | 'wrong' | 'unsure'; note: string | null }[]
+  mistakes: { stepIndex: number | null; problem: string; fix: string }[]
+  /** Steps to put things right first (e.g. take the wheel off and refit it the other way). */
+  fixSteps: Step[]
+  /** Index (in mode order) of the first step still to do after the fixes; = steps.length when finished. */
+  resumeAt: number
+  photoUrl: string | null
+  note: string | null
 }

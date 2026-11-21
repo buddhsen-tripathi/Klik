@@ -18,7 +18,7 @@ type Answer =
   | { type: 'noul'; noul: number; confidence: number }
   | { type: 'choice'; choice: string; probabilities: Record<string, number>; confidence: number }
 
-async function decide(apiKey: string, input: Input[], questions: Record<string, Question>, timeoutMs = 15_000): Promise<Record<string, Answer>> {
+export async function decide(apiKey: string, input: Input[], questions: Record<string, Question>, timeoutMs = 15_000): Promise<Record<string, Answer>> {
   const res = await fetch(API, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
@@ -30,13 +30,13 @@ async function decide(apiKey: string, input: Input[], questions: Record<string, 
   return body.answers
 }
 
-const image = (img: InlineImage, resolution: 'low' | 'medium' | 'high' = 'medium'): Input => ({
+export const image = (img: InlineImage, resolution: 'low' | 'medium' | 'high' = 'medium'): Input => ({
   type: 'image',
   data: img.base64,
   mime_type: img.mimeType,
   resolution,
 })
-const yes = (a: Answer | undefined) => (a?.type === 'noul' ? a.noul : 0.5)
+export const yes = (a: Answer | undefined) => (a?.type === 'noul' ? a.noul : 0.5)
 const pick = <T extends string>(a: Answer | undefined, fallback: T): { value: T; confidence: number } =>
   a?.type === 'choice' ? { value: a.choice as T, confidence: a.confidence } : { value: fallback, confidence: 0 }
 

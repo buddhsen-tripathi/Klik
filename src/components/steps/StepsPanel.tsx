@@ -24,6 +24,8 @@ interface Props {
   photo: ReactNode
   /** Latency waterfall for this scan. */
   timings?: Timing[]
+  /** Shown under the stepper, e.g. "Check my progress" or the fix-plan banner. */
+  assist?: ReactNode
 }
 
 const MODES: { value: Mode; label: string }[] = [
@@ -32,7 +34,7 @@ const MODES: { value: Mode; label: string }[] = [
 ]
 
 /** Right-hand (or bottom, on phones) panel: mode, stepper, the current step or overview, details. */
-export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, onStep, selectedId, modelError, writing, photo, timings = [] }: Props) {
+export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, onStep, selectedId, modelError, writing, photo, timings = [], assist }: Props) {
   const step = stepIndex >= 0 ? steps[stepIndex] : null
   const selected = selectedId ? analysis.parts.find((p) => p.id === selectedId) : null
 
@@ -43,6 +45,7 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
         <Segmented value={mode} options={MODES} onChange={onMode} />
       </div>
       <Stepper stepIndex={stepIndex} count={steps.length} writing={writing} onStep={onStep} />
+      {assist}
       {step ? <StepCard step={step} mode={mode} analysis={analysis} /> : <Overview analysis={analysis} />}
       {selected && <SelectedPart part={selected} />}
       <Disclosure summary="All steps">

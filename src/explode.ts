@@ -1,4 +1,4 @@
-import type { Analysis, RemovalDirection } from './shared/types'
+import type { Analysis, RemovalDirection, Step } from './shared/types'
 
 export type Mode = 'disassemble' | 'assemble'
 
@@ -63,4 +63,28 @@ export function explodeDistance(analysis: Analysis, partSize: [number, number, n
   const objectMax = Math.max(...analysis.dimensions)
   const partMax = Math.max(...partSize)
   return objectMax * 0.55 + partMax * 0.5
+}
+
+/**
+ * 3D states while following a fix plan (after "check my progress"): parts from steps already
+ * done are shown done (removed, or in place when assembling), the current plan step is
+ * highlighted, and later guide steps are still to do. Fix steps don't hide parts that are
+ * physically there (just wrongly placed).
+ */
+export function planStates(analysis: Analysis, mode: Mode, done: Step[], plan: Step[], stepIndex: number): Map<string, PartState> {
+  const taking = mode === 'disassemble'
+  const DONE: PartState = taking ? { offset: 1, faded: true, active: false } : { offset: 0, faded: false, active: false }
+  const TODO: PartState = taking ? { offset: 0, faded: false, active: false } : { offset: 1, faded: true, active: false }
+  const states = new Map<string, PartState>()
+  for (const part of analysis.parts) states.set(part.id, { offset: 0, faded: false, active: false })
+  for (const s of done) for (const id of s.partIds) states.set(id, DONE)
+  plan.forEach((s, j) => {
+    const fix = s.group === 'Fix first'
+    for (const id of s.partIds) {
+      if (j < stepIndex) states.set(id, fix ? { offset: 0, faded: false, active: false } : DONE)
+      else if (j === stepIndex) states.set(id, { offset: 0.6, faded: false, active: true })
+      else if (!fix && !states.get(id)?.active) states.set(id, TODO)
+    }
+  })
+  return states
 }

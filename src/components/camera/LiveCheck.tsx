@@ -16,6 +16,7 @@ const COOLDOWN_MS = 2500 // after advancing, let the user move on before judging
  */
 export default function LiveCheck({
   scanId,
+  plan,
   mode,
   stepIndex,
   stepCount,
@@ -23,6 +24,8 @@ export default function LiveCheck({
   onClose,
 }: {
   scanId: string
+  /** Following the fix plan from a progress check (step numbers refer to it). */
+  plan?: boolean
   mode: Mode
   stepIndex: number
   stepCount: number
@@ -54,7 +57,7 @@ export default function LiveCheck({
       l.busy = true
       try {
         const shot = await toJpeg(v, 640, 0.7)
-        const r = await checkStep(scanId, shot.blob, i, mode, ctrl.signal)
+        const r = await checkStep(scanId, shot.blob, i, mode, ctrl.signal, plan)
         if (latest.current.stepIndex !== i) return // user moved on meanwhile
         setResult(r)
         l.hits = r.inView >= 0.5 && r.done >= DONE_AT ? l.hits + 1 : 0
@@ -75,7 +78,7 @@ export default function LiveCheck({
       clearInterval(timer)
       ctrl.abort()
     }
-  }, [status, finished, scanId, mode, videoRef])
+  }, [status, finished, scanId, mode, videoRef, plan])
 
   const pct = result ? Math.round(result.done * 100) : 0
   let label: string

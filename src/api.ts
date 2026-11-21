@@ -1,4 +1,4 @@
-import type { Identification, ScanSummary, ScanView } from './shared/types'
+import type { Identification, Recovery, ScanSummary, ScanView } from './shared/types'
 
 /** A photo ready to upload. */
 export interface Shot {
@@ -24,8 +24,8 @@ export async function identify(frame: Blob, signal?: AbortSignal): Promise<Ident
 }
 
 /** Live step check (Decisions API): probability the step is done, and that the object is in view. */
-export async function checkStep(scanId: string, frame: Blob, step: number, mode: 'disassemble' | 'assemble', signal?: AbortSignal) {
-  const res = await fetch(`/api/scans/${scanId}/check?step=${step}&mode=${mode}`, {
+export async function checkStep(scanId: string, frame: Blob, step: number, mode: 'disassemble' | 'assemble', signal?: AbortSignal, plan = false) {
+  const res = await fetch(`/api/scans/${scanId}/check?step=${step}&mode=${mode}${plan ? '&plan=1' : ''}`, {
     method: 'POST',
     headers: { 'content-type': frame.type },
     body: frame,
@@ -76,3 +76,22 @@ export async function prepareFile(file: File): Promise<Shot> {
     bitmap.close()
   }
 }
+
+/** "Check my progress": photo of the build as it is now → step status, mistakes, fix steps. */
+export async function checkProgress(scanId: string, photo: Blob, mode: 'disassemble' | 'assemble', note: string | null): Promise<Recovery> {
+  const q = new URLSearchParams({ mode, ...(note ? { note } : {}) })
+  const res = await fetch(`/api/scans/${scanId}/progress?${q}`, { method: 'POST', headers: { 'content-type': photo.type || 'image/jpeg' }, body: photo })
+  return json<Recovery>(res)
+}
+
+/** Drop the fix plan and go back to the full guide. */
+export const clearRecovery = (scanId: string) => fetch(`/api/scans/${scanId}/recovery`, { method: 'DELETE' })
+
+/** Short-lived Gemini Live token for the voice agent. */
+export const liveToken = () => fetch('/api/live/token', { method: 'POST' }).then((r) => json<{ token: string; model: string }>(r))
+
+/** Voice agent's web search (cited answer). */
+export const agentSearch = (question: string) =>
+  fetch('/api/agent/search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question }) }).then((r) =>
+    json<{ answer: string; sources: { title: string; url: string }[] }>(r),
+  )

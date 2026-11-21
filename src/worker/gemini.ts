@@ -7,7 +7,7 @@ const API = 'https://generativelanguage.googleapis.com/v1beta/models'
 const vec3 = { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3 }
 const DIRECTIONS: RemovalDirection[] = ['up', 'down', 'left', 'right', 'front', 'back']
 
-const STEP_ITEM = {
+export const STEP_ITEM = {
   type: 'object',
   properties: {
     partIds: { type: 'array', items: { type: 'string' } },
@@ -184,7 +184,7 @@ export interface InlineImage {
 }
 
 /** One generateContent call with images + text, answered as JSON matching `schema`. */
-async function generateJson(opts: {
+export async function generateJson(opts: {
   apiKey: string
   model: string
   images: InlineImage[]

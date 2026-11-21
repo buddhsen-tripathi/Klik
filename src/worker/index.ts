@@ -1,33 +1,21 @@
 import { Hono } from 'hono'
-import type { Analysis, ModelFile, ScanPhoto, ScanSummary, ScanView, Timing } from '../shared/types'
+import { planSteps } from '../shared/plan'
+import type { Analysis, ModelFile, Recovery, ScanPhoto, ScanSummary, ScanView, Timing } from '../shared/types'
 import { checkStep } from './decisions'
 import { identifyFrame } from './gemini'
+import assist from './routes/assist'
+import { ALLOWED_TYPES, fileUrl, parseJson, toBase64 } from './util'
 
 export { ScanWorkflow } from './workflow'
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024
 const MAX_PHOTOS = 6
 const MAX_FRAME_BYTES = 1024 * 1024
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 const app = new Hono<{ Bindings: Env }>()
 
-const fileUrl = (key: string | null) => (key ? `/api/files/${key}` : null)
-const parseJson = <T>(s: string | null, fallback: T): T => {
-  if (!s) return fallback
-  try {
-    return JSON.parse(s) as T
-  } catch {
-    return fallback
-  }
-}
-
-function toBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf)
-  let bin = ''
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  return btoa(bin)
-}
+// Progress checks (re-plan after mistakes) and the voice agent.
+app.route('/api', assist)
 
 // Upload 1-6 photos of one object (different angles) and start the scan pipeline.
 // Form fields: photo (repeated), width (repeated), height (repeated), hint (optional).
@@ -108,6 +96,7 @@ app.get('/api/scans/:id', async (c) => {
     progress: parseJson(row.progress, null),
     modelFiles: modelFiles(row),
     timings: parseJson<Timing[]>(row.timings, []),
+    recovery: parseJson(row.recovery, null),
   }
   return c.json(view)
 })
@@ -159,11 +148,15 @@ app.post('/api/scans/:id/check', async (c) => {
   const buf = await c.req.arrayBuffer()
   if (buf.byteLength === 0 || buf.byteLength > MAX_FRAME_BYTES) return c.json({ error: 'frame must be under 1 MB' }, 400)
 
-  const row = await c.env.DB.prepare('SELECT analysis FROM scans WHERE id = ?').bind(c.req.param('id')).first<{ analysis: string | null }>()
+  const row = await c.env.DB.prepare('SELECT analysis, recovery FROM scans WHERE id = ?')
+    .bind(c.req.param('id'))
+    .first<{ analysis: string | null; recovery: string | null }>()
   const analysis = parseJson<Analysis | null>(row?.analysis ?? null, null)
   if (!analysis) return c.json({ error: 'scan has no steps yet' }, 404)
-  // Same ordering as the app: assembly is the disassembly list reversed.
-  const steps = mode === 'disassemble' ? analysis.steps : [...analysis.steps].reverse()
+  // Same ordering as the app: assembly is the disassembly list reversed; ?plan=1 = the fix plan.
+  const ordered = mode === 'disassemble' ? analysis.steps : [...analysis.steps].reverse()
+  const recovery = c.req.query('plan') === '1' ? parseJson<Recovery | null>(row?.recovery ?? null, null) : null
+  const steps = recovery && recovery.mode === mode ? planSteps(ordered, recovery) : ordered
   const step = steps[index]
   if (!Number.isInteger(index) || !step) return c.json({ error: 'no such step' }, 400)
 
