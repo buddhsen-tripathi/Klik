@@ -1,11 +1,10 @@
-import type { ScanView } from './shared/types'
+import type { Identification, ScanSummary, ScanView } from './shared/types'
 
-export interface ScanSummary {
-  id: string
-  createdAt: number
-  stage: ScanView['stage']
-  photoUrl: string
-  objectName: string | null
+/** A photo ready to upload. */
+export interface Shot {
+  blob: Blob
+  width: number
+  height: number
 }
 
 async function json<T>(res: Response): Promise<T> {
@@ -16,34 +15,53 @@ async function json<T>(res: Response): Promise<T> {
 
 export const getScan = (id: string) => fetch(`/api/scans/${id}`).then((r) => json<ScanView>(r))
 export const listScans = () => fetch('/api/scans').then((r) => json<ScanSummary[]>(r))
+export const getScanSummaries = (ids: string[]) =>
+  fetch(`/api/scans?ids=${ids.map(encodeURIComponent).join(',')}`).then((r) => json<ScanSummary[]>(r))
 
-/**
- * Shrink the photo before upload: phone photos are 3-12 MB, and Gemini and SAM 3D
- * don't need more than ~1600 px. Also bakes in EXIF rotation so boxes line up.
- */
-export async function preparePhoto(file: File, maxSide = 1600): Promise<{ blob: Blob; width: number; height: number }> {
-  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
-  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
-  const width = Math.round(bitmap.width * scale)
-  const height = Math.round(bitmap.height * scale)
+export async function identify(frame: Blob, signal?: AbortSignal): Promise<Identification> {
+  const res = await fetch('/api/identify', { method: 'POST', headers: { 'content-type': frame.type }, body: frame, signal })
+  return json<Identification>(res)
+}
+
+export async function createScan(shots: Shot[], hint: string): Promise<string> {
+  const form = new FormData()
+  shots.forEach((s, i) => {
+    form.append('photo', new File([s.blob], `photo-${i}.jpg`, { type: s.blob.type || 'image/jpeg' }))
+    form.append('width', String(s.width))
+    form.append('height', String(s.height))
+  })
+  if (hint.trim()) form.set('hint', hint.trim())
+  const { id } = await json<{ id: string }>(await fetch('/api/scans', { method: 'POST', body: form }))
+  return id
+}
+
+/** Draw a video frame or image into a JPEG no bigger than maxSide on its longest edge. */
+export async function toJpeg(
+  source: HTMLVideoElement | ImageBitmap,
+  maxSide: number,
+  quality = 0.88,
+): Promise<Shot> {
+  const sw = source instanceof HTMLVideoElement ? source.videoWidth : source.width
+  const sh = source instanceof HTMLVideoElement ? source.videoHeight : source.height
+  const scale = Math.min(1, maxSide / Math.max(sw, sh))
+  const width = Math.round(sw * scale)
+  const height = Math.round(sh * scale)
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
-  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, width, height)
-  bitmap.close()
+  canvas.getContext('2d')!.drawImage(source, 0, 0, width, height)
   const blob = await new Promise<Blob>((resolve, reject) =>
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not encode photo'))), 'image/jpeg', 0.88),
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not encode photo'))), 'image/jpeg', quality),
   )
   return { blob, width, height }
 }
 
-export async function createScan(file: File, hint: string): Promise<string> {
-  const { blob, width, height } = await preparePhoto(file)
-  const form = new FormData()
-  form.set('photo', new File([blob], 'photo.jpg', { type: 'image/jpeg' }))
-  form.set('width', String(width))
-  form.set('height', String(height))
-  if (hint.trim()) form.set('hint', hint.trim())
-  const { id } = await json<{ id: string }>(await fetch('/api/scans', { method: 'POST', body: form }))
-  return id
+/** Library photos: shrink to 1600 px and bake in EXIF rotation so Gemini's boxes line up. */
+export async function prepareFile(file: File): Promise<Shot> {
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+  try {
+    return await toJpeg(bitmap, 1600)
+  } finally {
+    bitmap.close()
+  }
 }
