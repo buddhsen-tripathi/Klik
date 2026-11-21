@@ -275,8 +275,8 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
               async () =>
                 buildReference({
                   apiKey: this.env.GEMINI_API_KEY,
-                  // On the critical path before planning: the fast model (the planner itself is neon).
-                  model: this.env.IDENTIFY_MODEL || this.env.GEMINI_MODEL,
+                  // Manual facts (screw sizes, part names) feed the parts and steps: accuracy model.
+                  model: this.env.GEMINI_MODEL,
                   thinkingLevel: thinking,
                   identity,
                   image: { base64: await readPhoto(first), mimeType: first.photo_type },

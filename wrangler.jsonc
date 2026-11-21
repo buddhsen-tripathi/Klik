@@ -36,7 +36,7 @@
 
   "vars": {
     // Two Gemini 4 models: neon for the essential reasoning, hydrogen for fast helper calls.
-    // Planner (looks at the photos, lists the parts and their 2D boxes for SAM 3D): neon, for accuracy.
+    // Accuracy model (neon): the planner (looks at the photos, lists parts + 2D boxes for SAM 3D) and the manual summary.
     "GEMINI_MODEL": "gemini-4-neon",
     // MINIMAL | LOW | MEDIUM | HIGH. LOW keeps analysis fast; raise it if parts/steps look sloppy.
     "ANALYSIS_THINKING": "LOW",
@@ -44,7 +44,7 @@
     "STEPS_MODEL": "gemini-4-neon",
     // Parallel SAM 3D jobs per scan (one per part, $0.02 each). SAM 3D takes ~25 s per box, so one job per part is fastest.
     "MAX_3D_JOBS": "10",
-    // Fast, cheap model: live camera naming, identify, manual summary, reference images, translation.
+    // Fast model (hydrogen) for quick, frequent or cosmetic calls: live camera naming, identify, reference images, translation.
     "IDENTIFY_MODEL": "gemini-4-hydrogen",
     // Voice agent (Gemini Live, audio in and out, tool calls). Browser connects directly with an ephemeral token.
     "LIVE_MODEL": "gemini-3.8-live"
