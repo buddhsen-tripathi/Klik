@@ -4,7 +4,7 @@
 
 It runs in the phone browser (no app to install) and deploys as a single Cloudflare Worker.
 
-Live demo: https://assemble-on-the-go.buddhsen-work.workers.dev
+Live demo: https://klik.buddhsen-work.workers.dev
 
 ---
 
