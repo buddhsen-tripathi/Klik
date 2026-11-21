@@ -1,8 +1,10 @@
+import { Box, Camera, ImagePlus, ListChecks, ScanLine } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { listScans, prepareFile } from '../../api'
 import { cameraSupported } from '../../camera'
 import { enqueueScan } from '../../jobs'
 import type { ScanSummary } from '../../shared/types'
+import RecentScans from './RecentScans'
 
 const MAX_PHOTOS = 6
 
@@ -58,14 +60,37 @@ export default function Capture({ onUseCamera }: { onUseCamera: () => void }) {
   return (
     <main className="capture">
       <section className="hero">
-        <h1>Point, shoot, take it apart.</h1>
-        <p>Add 1–6 photos of the same object from different angles. You'll get a 3D model and step-by-step instructions.</p>
+        <h1>
+          Point, shoot,
+          <br />
+          <em>take it apart.</em>
+        </h1>
+        <ol className="how" aria-label="How it works">
+          <li>
+            <Camera aria-hidden /> Photos
+          </li>
+          <li>
+            <Box aria-hidden /> 3D model
+          </li>
+          <li>
+            <ListChecks aria-hidden /> Steps
+          </li>
+        </ol>
       </section>
 
       <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden onChange={onPick} />
       <input ref={libraryInput} type="file" accept="image/jpeg,image/png,image/webp,image/heic" multiple hidden onChange={onPick} />
 
-      <section className="card pick-card">
+      <section className={`card pick-card${files.length ? ' has-files' : ''}`}>
+        {files.length === 0 && (
+          <div className="pick-empty">
+            <span className="pick-icon">
+              <ImagePlus aria-hidden />
+            </span>
+            <strong>Add 1–6 photos</strong>
+            <span className="muted small">Same object, different angles</span>
+          </div>
+        )}
         {previews.length > 0 && (
           <div className="preview-grid">
             {previews.map((url, i) => (
@@ -77,11 +102,11 @@ export default function Capture({ onUseCamera }: { onUseCamera: () => void }) {
           </div>
         )}
         <div className="row">
-          <button className="btn ghost grow" onClick={() => cameraInput.current?.click()} disabled={files.length >= MAX_PHOTOS}>
-            Take photo
+          <button className={`btn grow ${files.length ? 'ghost' : 'primary'}`} onClick={() => cameraInput.current?.click()} disabled={files.length >= MAX_PHOTOS}>
+            <Camera aria-hidden /> Take photo
           </button>
           <button className="btn ghost grow" onClick={() => libraryInput.current?.click()} disabled={files.length >= MAX_PHOTOS}>
-            Choose photos
+            <ImagePlus aria-hidden /> Choose
           </button>
         </div>
         {files.length > 0 && (
@@ -98,27 +123,13 @@ export default function Capture({ onUseCamera }: { onUseCamera: () => void }) {
         {sent && <p className="muted">Processing in the background. Add another object whenever you like.</p>}
         {error && <p className="error">{error}</p>}
         {cameraSupported() && (
-          <button className="link-btn dark" onClick={onUseCamera}>
-            Use live camera instead
+          <button className="link-btn dark icon-text pick-live" onClick={onUseCamera}>
+            <ScanLine aria-hidden /> Use live camera
           </button>
         )}
       </section>
 
-      {recent.length > 0 && (
-        <section className="recent">
-          <h2>Recent scans</h2>
-          <ul>
-            {recent.map((s) => (
-              <li key={s.id}>
-                <a href={`#/scan/${s.id}`}>
-                  {s.photoUrl && <img src={s.photoUrl} alt="" loading="lazy" />}
-                  <span>{s.objectName ?? (s.stage === 'failed' ? 'Failed scan' : 'Processing…')}</span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <RecentScans scans={recent} />
     </main>
   )
 }

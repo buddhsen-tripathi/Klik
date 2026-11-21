@@ -1,0 +1,162 @@
+/* ---------- guide screen polish (KLIK theme): 3D toolbar, sheet, step card, dock ---------- */
+
+/* Glass controls over the 3D view. */
+.viewer-bar .segmented,
+.viewer-bar .btn.ghost,
+.viewer-bar .chip,
+.size-check {
+  background: color-mix(in oklch, var(--card) 78%, transparent);
+  backdrop-filter: blur(12px) saturate(1.3);
+  -webkit-backdrop-filter: blur(12px) saturate(1.3);
+  border-color: color-mix(in oklch, var(--border) 80%, transparent);
+  box-shadow: var(--shadow-lg);
+}
+.viewer-bar .segmented button.on {
+  background: var(--foreground);
+  color: var(--background);
+}
+.bar-btn {
+  border-radius: 999px;
+}
+
+/* Phone sheet: rounder, softer lift. */
+@media (max-width: 899px) {
+  .panel {
+    border-radius: 22px 22px 0 0;
+    box-shadow: 0 -1px 0 var(--border), 0 -12px 32px -12px hsl(0 0% 0% / 0.22);
+  }
+}
+
+/* Progress: "STEP 2 OF 7" in mono, done segments in teal, the current one in orange. */
+.step-progress-label > span {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--foreground);
+}
+.step-progress-bar span {
+  height: 5px;
+  transition: background 0.25s;
+}
+.step-progress-bar li.done span {
+  background: var(--secondary);
+}
+.step-progress-bar li.current span {
+  background: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+/* Step card: group as an orange mono eyebrow, a bold title, then the one action. */
+.step-card {
+  padding: 16px 16px 14px;
+}
+.step-card .eyebrow {
+  font-family: var(--font-mono);
+  color: var(--primary);
+  font-size: 0.68rem;
+  margin-bottom: 4px;
+}
+.step-card h2 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+}
+.instruction {
+  font-size: 1.08rem;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.step-details li::marker {
+  color: var(--secondary);
+}
+
+.marker,
+.pin {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.pin {
+  box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 25%, transparent), 0 4px 10px rgb(0 0 0 / 0.25);
+}
+
+.caution {
+  border-left: 3px solid var(--destructive);
+  border-radius: 6px var(--radius) var(--radius) 6px;
+  background: color-mix(in oklch, var(--destructive) 9%, var(--card));
+  padding: 10px 12px;
+}
+
+.assist-hint {
+  border-style: solid;
+  background: var(--muted);
+  border-radius: var(--radius);
+}
+
+/* Overview facts: spec-sheet style. */
+.facts {
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.facts > div {
+  flex: 1;
+  padding: 8px 10px;
+}
+.facts > div + div {
+  border-left: 1px solid var(--border);
+}
+.facts dt {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 600;
+}
+.facts dd {
+  font-size: 1.02rem;
+}
+
+.overview h3,
+.card h3 {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-foreground);
+  margin: 16px 0 8px;
+}
+
+/* Dock: squircle icon buttons beside a big orange Next. */
+.btn.round,
+.dock-back {
+  border-radius: 16px;
+}
+.dock-next {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.dock-next .lucide {
+  transition: transform 0.15s;
+}
+.dock-next:not(:disabled):hover .lucide:last-child {
+  transform: translateX(3px);
+}
+
+.part-label {
+  font: 600 12px/1.2 var(--font-sans);
+}
+
+/* Desktop: the steps column on a faint tinted ground. */
+@media (min-width: 900px) {
+  .panel {
+    background: color-mix(in oklch, var(--muted) 60%, var(--background));
+  }
+  .panel-head h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+  }
+}

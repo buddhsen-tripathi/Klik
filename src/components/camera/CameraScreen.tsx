@@ -1,4 +1,6 @@
-import { Hexagon } from 'lucide-react'
+import { ImageUp, SwitchCamera } from 'lucide-react'
+import Logo from '../brand/Logo'
+import LanguagePicker from '../LanguagePicker'
 import { useEffect, useRef, useState } from 'react'
 import { identify, toJpeg, type Shot } from '../../api'
 import { makeSignaturer, sigDiff, useCamera } from '../../camera'
@@ -194,11 +196,9 @@ export default function CameraScreen({ onUseLibrary }: { onUseLibrary: () => voi
         <div key={flash} className={flash ? 'shutter-flash' : ''} />
 
         <div className="camera-top">
-          <span className="brand light">
-            <Hexagon className="brand-mark" aria-hidden />
-            Assemble on the Go
-          </span>
-          <div className="row">
+          <Logo light />
+          <div className="camera-top-actions">
+            <LanguagePicker compact />
             {canFlip && (
               <button
                 className="icon-btn"
@@ -211,13 +211,17 @@ export default function CameraScreen({ onUseLibrary }: { onUseLibrary: () => voi
                   flip()
                 }}
               >
-                ⟲
+                <SwitchCamera aria-hidden />
               </button>
             )}
-            <button className="link-btn" onClick={onUseLibrary}>
-              Upload photos
+            <button className="glass-btn" onClick={onUseLibrary}>
+              <ImageUp aria-hidden /> Upload
             </button>
           </div>
+        </div>
+
+        <div className="viewfinder" aria-hidden>
+          <i className="tl" /><i className="tr" /><i className="bl" /><i className="br" />
         </div>
 
         <div className="camera-guide">
@@ -240,7 +244,9 @@ export default function CameraScreen({ onUseLibrary }: { onUseLibrary: () => voi
             </button>
           ))}
           {Array.from({ length: Math.max(0, GOOD_SHOTS - shots.length) }, (_, i) => (
-            <span key={`slot-${i}`} className="shot slot" />
+            <span key={`slot-${i}`} className="shot slot">
+              {shots.length + i + 1}
+            </span>
           ))}
         </div>
         <div className="camera-buttons">
@@ -248,7 +254,7 @@ export default function CameraScreen({ onUseLibrary }: { onUseLibrary: () => voi
             Auto
           </button>
           <button
-            className="shutter"
+            className={`shutter${auto ? ' auto' : ''}`}
             aria-label="Take photo"
             onClick={() => capture(null)}
             disabled={status !== 'live' || shots.length >= MAX_SHOTS}

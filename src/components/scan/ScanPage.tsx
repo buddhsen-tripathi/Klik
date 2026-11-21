@@ -72,8 +72,11 @@ export default function ScanPage({ id }: { id: string }) {
 
   if (!analysis) {
     return (
-      <main className="scan-page">
-        <PhotoWithBoxes scan={scan} />
+      <main className="scan-page scanning">
+        <div className="scan-photo">
+          <PhotoWithBoxes scan={scan} />
+          <span className="scan-beam" aria-hidden />
+        </div>
         {scan.stage === 'analyzing' && scan.progress?.phase ? (
           <Pipeline scan={scan} />
         ) : (
