@@ -1,9 +1,9 @@
 import { Edges, Grid, Html, OrbitControls, useGLTF } from '@react-three/drei'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
+import { Component, Suspense, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
 import * as THREE from 'three'
 import { DIRECTION_VECTORS, explodeDistance, type PartState } from '../explode'
-import type { Analysis, Part } from '../shared/types'
+import type { Analysis, Layout, ModelFile, Part } from '../shared/types'
 
 export type Source = 'blockout' | 'scan'
 
@@ -11,8 +11,8 @@ interface ViewerProps {
   analysis: Analysis
   states: Map<string, PartState>
   source: Source
-  modelUrl: string | null
-  modelPartIds: string[]
+  /** Scanned meshes (one per parallel SAM 3D job), loaded as they arrive. */
+  modelFiles: ModelFile[]
   /** Quarter turns around X, to fix scans that come back lying on their side. */
   orient: number
   /** Turntable: slowly orbit the model. The only mode that renders continuously. */
@@ -65,10 +65,10 @@ export default function Viewer3D(props: ViewerProps) {
         cellThickness={0.5}
         position={[0, -0.01, 0]}
       />
-      {props.source === 'scan' && props.modelUrl ? (
+      {props.source === 'scan' && props.modelFiles.length > 0 ? (
         <ModelErrorBoundary fallback={blockout}>
           <Suspense fallback={<BlockoutModel {...props} ghost />}>
-            <ScannedModel {...props} modelUrl={props.modelUrl} />
+            <ScannedModel {...props} />
           </Suspense>
         </ModelErrorBoundary>
       ) : (
@@ -208,23 +208,47 @@ function BlockoutPart(props: {
 
 type StdMat = THREE.MeshStandardMaterial
 
-function ScannedModel(props: ViewerProps & { modelUrl: string }) {
-  const { analysis, states, modelUrl, modelPartIds, orient, selectedId, onSelect } = props
-  const gltf = useGLTF(modelUrl)
+function ScannedModel(props: ViewerProps) {
+  const { analysis, states, orient, selectedId, onSelect } = props
+  // Per-part meshes arrive one by one while the scan is still modelling. Deferring the list keeps
+  // the parts already on screen while the next file loads, instead of flashing the fallback.
+  const files = useDeferredValue(props.modelFiles)
+  const urls = useMemo(() => files.map((f) => f.url), [files])
+  const gltfs = useGLTF(urls) as unknown as { scene: THREE.Object3D }[]
   const invalidate = useThree((s) => s.invalidate)
 
   const prepared = useMemo(() => {
-    const root = gltf.scene.clone(true)
-    // Own material per mesh so highlighting one part doesn't light up the others.
-    root.traverse((o) => {
-      const mesh = o as THREE.Mesh
-      if (mesh.isMesh) mesh.material = Array.isArray(mesh.material) ? mesh.material.map((m) => m.clone()) : mesh.material.clone()
+    const root = new THREE.Group()
+    const objects: THREE.Object3D[] = []
+    const partIds: string[] = []
+    files.forEach((file, fi) => {
+      const scene = gltfs[fi].scene.clone(true)
+      // Own material per mesh so highlighting one part doesn't light up the others.
+      scene.traverse((o) => {
+        const mesh = o as THREE.Mesh
+        if (mesh.isMesh) mesh.material = Array.isArray(mesh.material) ? mesh.material.map((m) => m.clone()) : mesh.material.clone()
+      })
+      // One node per box prompt. Walk past wrapper nodes to find them.
+      let node: THREE.Object3D = scene
+      while (node.children.length === 1 && !(node as THREE.Mesh).isMesh) node = node.children[0]
+      const nodes = node.children.length > 1 ? [...node.children] : [node]
+      if (file.layouts.length === nodes.length) {
+        // Place each object where SAM 3D saw it in the photo, so separate files line up.
+        nodes.forEach((n, k) => {
+          const holder = new THREE.Group()
+          layoutMatrix(file.layouts[k]).decompose(holder.position, holder.quaternion, holder.scale)
+          holder.add(n)
+          root.add(holder)
+          objects.push(holder)
+        })
+      } else {
+        // Older single-file scans: the file is already one scene.
+        root.add(scene)
+        objects.push(...nodes)
+      }
+      partIds.push(...file.partIds.slice(0, nodes.length))
     })
-    // SAM 3D's combined scene should hold one node per box prompt. Walk past wrapper nodes to find them.
-    let node: THREE.Object3D = root
-    while (node.children.length === 1 && !(node as THREE.Mesh).isMesh) node = node.children[0]
-    const objects = node.children.length > 1 ? [...node.children] : [node]
-    const split = modelPartIds.length > 1 && objects.length === modelPartIds.length
+    const split = partIds.length > 1 && objects.length === partIds.length
     // Collect each node's materials once, so the frame loop never has to traverse.
     const materials = objects.map((obj) => {
       const list: StdMat[] = []
@@ -238,25 +262,33 @@ function ScannedModel(props: ViewerProps & { modelUrl: string }) {
       })
       return list
     })
-    return { root, objects, split, materials, bases: objects.map((o) => o.position.clone()) }
-  }, [gltf.scene, modelPartIds.length])
+    return { root, objects, split, materials, partIds, bases: objects.map((o) => o.position.clone()) }
+  }, [files, gltfs])
+  const modelPartIds = prepared.partIds
 
-  // Free GPU memory when the scan is closed, and drop it from drei's cache.
+  // Material clones belong to one `prepared`; drop them when a new file is added.
+  useEffect(() => () => prepared.materials.flat().forEach((m) => m.dispose()), [prepared])
+
+  // Free GPU memory when the scan is closed (not when a new part arrives), and drop it from drei's cache.
+  const loaded = useRef({ gltfs, urls })
+  useEffect(() => {
+    loaded.current = { gltfs, urls }
+  }, [gltfs, urls])
   useEffect(
     () => () => {
-      prepared.materials.flat().forEach((m) => m.dispose())
-      gltf.scene.traverse((o) => {
-        const mesh = o as THREE.Mesh
-        if (!mesh.isMesh) return
-        mesh.geometry.dispose()
-        for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
-          for (const value of Object.values(m)) if (value instanceof THREE.Texture) value.dispose()
-          m.dispose()
-        }
-      })
-      useGLTF.clear(modelUrl)
+      for (const g of loaded.current.gltfs)
+        g.scene.traverse((o) => {
+          const mesh = o as THREE.Mesh
+          if (!mesh.isMesh) return
+          mesh.geometry.dispose()
+          for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+            for (const value of Object.values(m)) if (value instanceof THREE.Texture) value.dispose()
+            m.dispose()
+          }
+        })
+      loaded.current.urls.forEach((u) => useGLTF.clear(u))
     },
-    [prepared, gltf, modelUrl],
+    [],
   )
 
   // Scale the scan to Gemini's estimated real size and stand it on the ground at the origin.
@@ -356,6 +388,23 @@ function ScannedModel(props: ViewerProps & { modelUrl: string }) {
       {prepared.split && hidden.size > 0 && <BlockoutModel {...props} ghost only={hidden} />}
     </>
   )
+}
+
+/**
+ * SAM 3D pose → three.js matrix. Mesh vertices are glTF Y-up; the pose maps Z-up object space
+ * into PyTorch3D camera space (+X left, +Y up, +Z away from the camera), with row-vector
+ * rotation (p · R). Checked against the photo: parts lower/left in the image land lower/left.
+ */
+function layoutMatrix(l: Layout): THREE.Matrix4 {
+  const [w, x, y, z] = l.rotation
+  const R = new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion(x, y, z, w).normalize()).transpose()
+  const yUpToZUp = new THREE.Matrix4().makeRotationX(Math.PI / 2)
+  const camToThree = new THREE.Matrix4().makeScale(-1, 1, -1)
+  return camToThree
+    .multiply(new THREE.Matrix4().makeTranslation(l.translation[0], l.translation[1], l.translation[2]))
+    .multiply(R)
+    .multiply(new THREE.Matrix4().makeScale(l.scale, l.scale, l.scale))
+    .multiply(yUpToZUp)
 }
 
 class ModelErrorBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {

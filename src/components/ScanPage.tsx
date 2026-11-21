@@ -108,6 +108,10 @@ export default function ScanPage({ id }: { id: string }) {
     setStepIndex(-1)
   }
   const canWatch = steps.length > 0 && scan.stage !== 'analyzing'
+  const hasScan = scan.modelFiles.length > 0
+  const fal = scan.progress?.fal ?? null
+  // Per-part meshes stream in while the scan is still modelling.
+  const building = scan.stage === 'modeling'
 
   return (
     <main className="workbench">
@@ -116,28 +120,27 @@ export default function ScanPage({ id }: { id: string }) {
           analysis={analysis}
           states={states}
           source={source}
-          modelUrl={scan.modelUrl}
-          modelPartIds={scan.modelPartIds}
+          modelFiles={scan.modelFiles}
           orient={orient}
           spin={spin}
           selectedId={selectedId}
           onSelect={setSelectedId}
         />
         <div className="viewer-bar">
-          {scan.modelUrl && source === 'scan' ? (
+          {hasScan && source === 'scan' ? (
             <div className="segmented small">
-              <button className="on">3D scan</button>
+              <button className="on">3D scan{building ? ` · ${scan.modelFiles.length}/${fal?.total ?? '?'}` : ''}</button>
               <button onClick={() => setSource('blockout')}>Blockout</button>
             </div>
-          ) : scan.modelUrl ? (
+          ) : hasScan ? (
             <button className="btn primary small" onClick={() => setSource('scan')}>
-              Load 3D scan{scan.modelBytes ? ` · ${formatMB(scan.modelBytes)}` : ''}
+              {building ? `Load 3D scan · ${scan.modelFiles.length}/${fal?.total ?? '?'} parts` : `Load 3D scan${scan.modelBytes ? ` · ${formatMB(scan.modelBytes)}` : ''}`}
             </button>
           ) : (
             <span className="chip">{scan.stage === 'modeling' ? 'Blockout · 3D scan building…' : 'Blockout'}</span>
           )}
           <div className="row">
-            {source === 'scan' && scan.modelUrl && (
+            {source === 'scan' && hasScan && (
               <button className="btn ghost small" onClick={() => setOrient((o) => (o + 1) % 4)} title="Rotate the scan if it came back sideways">
                 Flip scan
               </button>
@@ -186,6 +189,7 @@ export default function ScanPage({ id }: { id: string }) {
         modelError={scan.modelError}
         writing={scan.stage === 'analyzing'}
         photo={<PhotoWithBoxes scan={scan} compact />}
+        timings={scan.timings}
       />
     </main>
   )
@@ -219,9 +223,10 @@ function LiveStatus({ scan }: { scan: ScanView }) {
   } else {
     const fal = p?.fal
     if (fal?.status === 'IN_QUEUE') title = `3D scan queued${fal.queuePosition != null ? ` (#${fal.queuePosition + 1})` : ''}`
-    else if (fal?.status === 'IN_PROGRESS') title = 'Sculpting the 3D scan…'
+    else if (fal?.status === 'IN_PROGRESS')
+      title = fal.total && fal.total > 1 ? `Sculpting ${fal.total} parts in parallel (${fal.done ?? 0}/${fal.total})` : 'Sculpting the 3D scan…'
     else title = 'Starting the 3D scan…'
-    detail = fal?.log ?? 'The block model is ready to use meanwhile.'
+    detail = fal?.done ? 'Finished parts are ready: tap Load 3D scan.' : (fal?.log ?? 'The block model is ready to use meanwhile.')
   }
   return (
     <div className="live-status" role="status">

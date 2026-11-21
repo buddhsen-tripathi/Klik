@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import type { Analysis, ScanPhoto, ScanSummary, ScanView } from '../shared/types'
+import type { Analysis, ModelFile, ScanPhoto, ScanSummary, ScanView, Timing } from '../shared/types'
 import { checkStep } from './decisions'
 import { identifyFrame } from './gemini'
 
@@ -75,6 +75,14 @@ app.post('/api/scans', async (c) => {
   return c.json({ id }, 201)
 })
 
+/** Scanned meshes: per-part files from parallel SAM 3D jobs, or the one combined file on older scans. */
+function modelFiles(row: Record<string, any>): ModelFile[] {
+  const files = parseJson<(Omit<ModelFile, 'url'> & { key: string })[]>(row.model_files, [])
+  if (files.length) return files.map(({ key, ...f }) => ({ ...f, url: fileUrl(key)! }))
+  if (!row.model_key) return []
+  return [{ url: fileUrl(row.model_key)!, partIds: parseJson<string[]>(row.model_part_ids, []), layouts: [], bytes: row.model_bytes }]
+}
+
 // Full scan, polled by the scan page.
 app.get('/api/scans/:id', async (c) => {
   const id = c.req.param('id')
@@ -98,6 +106,8 @@ app.get('/api/scans/:id', async (c) => {
     error: row.error,
     modelError: row.model_error,
     progress: parseJson(row.progress, null),
+    modelFiles: modelFiles(row),
+    timings: parseJson<Timing[]>(row.timings, []),
   }
   return c.json(view)
 })

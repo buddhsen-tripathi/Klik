@@ -15,8 +15,28 @@ interface FalFile {
   content_type?: string | null
 }
 
+/** SAM 3D pose of one object: Z-up object space → PyTorch3D camera space (quaternion is w,x,y,z). */
+export interface Sam3dLayout {
+  scale: number
+  rotation: [number, number, number, number]
+  translation: [number, number, number]
+}
+
 export interface Sam3dResult {
   model_glb?: FalFile | null
+  metadata?: { object_index: number; scale: number[][]; rotation: number[][]; translation: number[][] }[] | null
+}
+
+/** Pull per-object layouts out of fal's metadata (nested [[...]] arrays), in object order. */
+export function layoutsOf(result: Sam3dResult): Sam3dLayout[] {
+  return (result.metadata ?? [])
+    .slice()
+    .sort((a, b) => a.object_index - b.object_index)
+    .map((m) => ({
+      scale: Number(m.scale?.[0]?.[0] ?? 1),
+      rotation: (m.rotation?.[0] ?? [1, 0, 0, 0]).slice(0, 4).map(Number) as Sam3dLayout['rotation'],
+      translation: (m.translation?.[0] ?? [0, 0, 0]).slice(0, 3).map(Number) as Sam3dLayout['translation'],
+    }))
 }
 
 async function falFetch(apiKey: string, url: string, init: RequestInit = {}) {

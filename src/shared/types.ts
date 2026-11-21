@@ -150,6 +150,35 @@ export interface ScanView {
   modelError: string | null
   /** Live status while the scan runs. */
   progress: ScanProgress | null
+  /** Scanned meshes: one file per parallel SAM 3D job (or the single combined file on old scans). */
+  modelFiles: ModelFile[]
+  /** Latency waterfall (epoch ms). */
+  timings: Timing[]
+}
+
+/** SAM 3D pose of one object: Z-up object space → PyTorch3D camera space (quaternion w,x,y,z). */
+export interface Layout {
+  scale: number
+  rotation: [number, number, number, number]
+  translation: [number, number, number]
+}
+
+export interface ModelFile {
+  url: string
+  /** Parts in this file, in node order. */
+  partIds: string[]
+  /** One pose per part; empty on old combined scans (no placement known). */
+  layouts: Layout[]
+  bytes: number | null
+}
+
+export interface Timing {
+  name: string
+  start: number
+  end: number
+  /** Clonvo generation id: look it up with GET https://api.clonvo.com/v1/generation?id=… */
+  generationId?: string | null
+  note?: string
 }
 
 export interface AgentProgress {
@@ -163,7 +192,14 @@ export interface ScanProgress {
   thought: string | null
   /** Parts list is complete (Gemini is now writing steps). */
   partsFinal: boolean
-  fal: { status: 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED'; queuePosition: number | null; log: string | null } | null
+  fal: {
+    status: 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED'
+    queuePosition: number | null
+    log: string | null
+    /** Parallel per-part jobs: how many have finished out of how many. */
+    done?: number
+    total?: number
+  } | null
   /** Pipeline phase while analyzing. */
   phase?: 'identifying' | 'researching' | 'planning' | 'writing'
   /** What we think it is, from the identify pass. */
