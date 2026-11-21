@@ -298,3 +298,70 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Numbered part markers: badges in the step text, a key under it, pins on the 3D model. */
+.marker {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.45em;
+  height: 1.45em;
+  margin: 0 0.15em;
+  padding: 0 0.3em;
+  border: 0;
+  border-radius: 99px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font: inherit;
+  font-size: 0.85em;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: 0.1em;
+  cursor: pointer;
+}
+span.marker {
+  cursor: default;
+}
+.marker-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9rem;
+}
+.marker-key li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.marker-key .marker {
+  margin: 0;
+}
+.pin {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  /* Sit just above the part's top, pointing down at it. */
+  transform: translateY(-20px);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  font: 700 0.85rem/1 system-ui, sans-serif;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.3);
+  cursor: pointer;
+}
+.pin::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 2px;
+  height: 9px;
+  translate: -50% 1px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+}

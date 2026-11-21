@@ -2,24 +2,33 @@ import { Bolt, TriangleAlert, Wrench } from 'lucide-react'
 import type { Mode } from '../../explode'
 import type { Analysis, Step } from '../../shared/types'
 import { Chip, ChipRow } from '../ui/Chip'
+import { markerIds, splitTokens } from '../../shared/parts'
 import { qty } from './format'
+import Marker from './Marker'
 import StepRevision from './StepRevision'
 
 /** The current step: what to do, which parts, which screws and tools. */
 export default function StepCard({ step, mode, analysis, onFocusPart }: { step: Step; mode: Mode; analysis: Analysis; onFocusPart?: (id: string) => void }) {
-  const partName = (id: string) => analysis.parts.find((p) => p.id === id)?.name ?? id
+  const partName = (id: string) => analysis.parts.find((p) => p.id === id)?.name ?? id.replace(/_/g, ' ')
+  const text = mode === 'disassemble' ? step.disassembly : step.assembly
+  // Numbers match the pins on the 3D model (see Workbench / PartMarkers).
+  const numbers = markerIds(text, step.partIds, (id) => analysis.parts.some((p) => p.id === id))
+  const marker = (id: string) => <Marker n={numbers.indexOf(id) + 1} name={partName(id)} onClick={onFocusPart && (() => onFocusPart(id))} />
   const fasteners = analysis.parts.filter((p) => p.kind === 'fastener' && step.partIds.includes(p.id))
   return (
     <section className="card step-card">
       {step.group && <p className="eyebrow">{step.group}</p>}
       <h2>{step.title}</h2>
       <StepRevision revision={step.revision} />
-      <p className="instruction">{mode === 'disassemble' ? step.disassembly : step.assembly}</p>
-      <p className="parts-line">
-        <strong>Parts:</strong>{' '}
-        {step.partIds.map((id, i) => (
-          <span key={id}>
-            {i > 0 && ', '}
+      <p className="instruction">
+        {splitTokens(text).map((t, i) =>
+          typeof t === 'string' ? t : numbers.includes(t.id) ? <span key={i}>{marker(t.id)}</span> : partName(t.id),
+        )}
+      </p>
+      <ul className="marker-key" aria-label="Parts">
+        {numbers.map((id) => (
+          <li key={id}>
+            {marker(id)}
             {onFocusPart ? (
               <button className="part-link" onClick={() => onFocusPart(id)}>
                 {partName(id)}
@@ -27,9 +36,9 @@ export default function StepCard({ step, mode, analysis, onFocusPart }: { step: 
             ) : (
               partName(id)
             )}
-          </span>
+          </li>
         ))}
-      </p>
+      </ul>
       <ChipRow empty={fasteners.length === 0}>
         {fasteners.map((f) => (
           <Chip key={f.id} icon={<Bolt aria-hidden />} variant="hardware" onClick={onFocusPart && (() => onFocusPart(f.id))}>

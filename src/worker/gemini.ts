@@ -12,9 +12,16 @@ export const STEP_ITEM = {
   type: 'object',
   properties: {
     partIds: { type: 'array', items: { type: 'string' } },
-    title: { type: 'string' },
-    disassembly: { type: 'string', description: 'Imperative instruction for taking these parts off.' },
-    assembly: { type: 'string', description: 'Imperative instruction for putting these parts back on.' },
+    title: { type: 'string', description: 'At most 5 words, plain text, no {tokens}. E.g. "Unscrew the chassis screws".' },
+    disassembly: {
+      type: 'string',
+      description:
+        'ONE physical action (one verb), at most 18 words. Mention parts ONLY as {part_id} tokens: the app shows each as a numbered marker on the 3D model. E.g. "Unscrew the 4 M3 screws {chassis_screws} with a Phillips #1 driver." or "Lift {body} straight up off {chassis}."',
+    },
+    assembly: {
+      type: 'string',
+      description: 'The reverse single action for the same parts, same {part_id} token style, with any alignment note. E.g. "Align {body} over {chassis} so the tabs meet, then lower it."',
+    },
     tools: { type: 'array', items: { type: 'string' } },
     caution: { type: ['string', 'null'] },
   },
@@ -612,8 +619,10 @@ ${
 Write the steps in DISASSEMBLY order${whole ? '' : `: first detach "${group.name}" from what is still attached (unless it is the base), then take it apart`}.
 Rules:
 - partIds may only use these ids: ${group.partIds.join(', ')}. Each of them in exactly one step, except the one base part that stays put.
-- 1 to 3 parts per step. A fastener part goes in the step where it is removed (usually together with what it holds).
-- Every instruction names the fastener (count and spec, e.g. "the 4 M4 x 12 mm Phillips screws") and the tool that fits it (e.g. "Phillips #2 screwdriver", "4 mm Allen key").
+- Each step is ONE action someone does with their hands: unscrew one set of identical fasteners, lift off one part, unclip, slide out, align. Never two actions in one step ("unscrew X and lift Y" is two steps).
+- So a fastener part gets its own step (unscrew it), and the part it held comes off in the next step. Usually 1 part per step, at most 2 when they come off together in the same motion.
+- Mention parts in the instructions only as {part_id} tokens, never by name ("Lift {hood} off {body}"). You may mention a part from another step or group as a reference point.
+- An unscrew step gives the fastener count and spec (e.g. "the 4 M4 x 12 mm screws {legs_bolts}") and the tool that fits it (e.g. "Phillips #2 screwdriver", "4 mm Allen key").
 - Only state exact sizes that appear in a part's [spec] or in the reference sheet. If a size is not known, describe it plainly and hedge the tool ("the 4 small Phillips screws, likely a #1 driver"); never invent thread sizes or lengths.
 - If the documents give an official order, follow it: an official ASSEMBLY order is reversed for disassembly.
 - "assembly" is the reverse action for the same parts, with any torque / alignment / orientation note from the documents.

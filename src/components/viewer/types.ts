@@ -34,6 +34,14 @@ export interface ViewerProps {
   focus?: Focus | null
   /** The 3D model is still being built: show no model yet (no block preview). */
   waiting?: boolean
+  /** Numbered pins on the current step's parts (same numbers as in the step text). */
+  markers?: Marker[]
+  onMarker?: (id: string) => void
+}
+
+export interface Marker {
+  id: string
+  n: number
 }
 
 export interface Focus {

@@ -5,6 +5,7 @@ import AutoFrame from './AutoFrame'
 import { blockFrame, blockTraySlots } from './tray'
 import BlockoutModel from './BlockoutModel'
 import ModelErrorBoundary from './ModelErrorBoundary'
+import PartMarkers from './PartMarkers'
 import ScannedModel from './ScannedModel'
 import SpinDriver from './SpinDriver'
 import StudioLighting from './StudioLighting'
@@ -74,6 +75,7 @@ export default function Viewer3D(props: ViewerProps) {
         maxPolarAngle={Math.PI * 0.95}
       />
       <SpinDriver on={!!props.spin} />
+      {!props.waiting && props.markers?.length ? <PartMarkers markers={props.markers} onPick={props.onMarker} /> : null}
       {/* The scanned model frames its own (real-size) tray layout. */}
       {!showingScan && !props.waiting && <AutoFrame box={box} frameKey={frameKey} focus={props.focus} />}
     </Canvas>

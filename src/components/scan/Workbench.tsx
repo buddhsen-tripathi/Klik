@@ -9,6 +9,7 @@ import VoiceAgent from '../agent/VoiceAgent'
 import ProgressAssist from '../recovery/ProgressAssist'
 import StepsPanel from '../steps/StepsPanel'
 import Viewer3D, { type SizeCheck, type Source } from '../viewer/Viewer3D'
+import { markerIds } from '../../shared/parts'
 import ModelLoading from '../viewer/ModelLoading'
 import LiveStatus from './LiveStatus'
 import PhotoWithBoxes from './PhotoWithBoxes'
@@ -65,6 +66,13 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
   const source: Source = sourceChoice ?? (autoScan ? 'scan' : 'blockout')
 
   const focus = focusReq?.step === stepIndex ? focusReq : null
+  // Numbered pins for the current step, in the same order as the numbers in its text.
+  const current = stepIndex >= 0 ? steps[stepIndex] : null
+  const markers = useMemo(() => {
+    if (!current) return []
+    const text = mode === 'disassemble' ? current.disassembly : current.assembly
+    return markerIds(text, current.partIds, (id) => analysis.parts.some((p) => p.id === id)).map((id, i) => ({ id, n: i + 1 }))
+  }, [current, mode, analysis.parts])
   const focusPart = (id: string | null) => {
     setSelectedId(id)
     if (id) setFocusReq((f) => ({ id, n: (f?.n ?? 0) + 1, step: stepIndex }))
@@ -176,6 +184,8 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
           onSelect={setSelectedId}
           focus={focus}
           waiting={waiting}
+          markers={markers}
+          onMarker={(id) => focusPart(id)}
         />
         {!waiting && source === 'scan' && hasScan && !scanFailed && <ModelLoading />}
         {source === 'scan' && scanFailed ? (

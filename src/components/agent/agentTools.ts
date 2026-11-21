@@ -2,7 +2,7 @@ import { agentSearch, reportStepProblem } from '../../api'
 import type { Mode } from '../../explode'
 import type { Analysis, Part, Recovery, Step } from '../../shared/types'
 import type { FunctionDeclaration } from './liveSession'
-import { partLabel } from '../../shared/parts'
+import { markerIds, partLabel, plainStepText } from '../../shared/parts'
 
 /** What the agent can see of the app right now. */
 export interface AgentSnapshot {
@@ -114,7 +114,10 @@ function stepText(s: AgentSnapshot, i: number): string {
   if (!step) return i < 0 ? 'Overview (no step selected).' : 'No such step.'
   const names = step.partIds.map((id) => s.analysis.parts.find((p) => p.id === id)).filter(Boolean) as Part[]
   const fix = step.group === 'Fix first' ? ' [FIX]' : ''
-  return `Step ${i + 1} of ${s.steps.length}${fix}: ${step.title}. ${s.mode === 'disassemble' ? step.disassembly : step.assembly}${
+  // Parts show as numbered markers on screen: "the body (1)" lets the agent say "part 1".
+  const text = s.mode === 'disassemble' ? step.disassembly : step.assembly
+  const numbers = markerIds(text, step.partIds, (id) => s.analysis.parts.some((p) => p.id === id))
+  return `Step ${i + 1} of ${s.steps.length}${fix}: ${step.title}. ${plainStepText(text, s.analysis.parts, numbers)}${
     names.length ? ` Parts: ${names.map(partLine).join(', ')}.` : ''
   }${step.tools.length ? ` Tools: ${step.tools.join(', ')}.` : ''}${step.caution ? ` Caution: ${step.caution}` : ''}`
 }
@@ -272,7 +275,7 @@ export async function runTool(name: string, args: Record<string, unknown>, s: Ag
         ok: true,
         revised: true,
         step: i + 1,
-        newInstruction: s.mode === 'disassemble' ? r.revised.disassembly : r.revised.assembly,
+        newInstruction: plainStepText(s.mode === 'disassemble' ? r.revised.disassembly : r.revised.assembly, s.analysis.parts),
         caution: r.revised.caution,
         next: 'Tell them in a few words that this step is updated, then read the new instruction.',
         scheduling: 'WHEN_IDLE',

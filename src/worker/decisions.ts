@@ -1,6 +1,6 @@
 import type { Analysis, Step, Triage } from '../shared/types'
 import type { InlineImage } from './gemini'
-import { qty } from '../shared/parts'
+import { plainStepText, qty } from '../shared/parts'
 
 /**
  * Gemini Decisions API (gemini-decision-1): typed yes/no and choice questions over shared
@@ -118,7 +118,7 @@ export async function checkStep(opts: {
       {
         type: 'text',
         text: `Live camera frame. The user is ${taking ? 'taking apart' : 'putting together'} a ${analysis.objectName}.
-Current step: "${step.title}". ${taking ? step.disassembly : step.assembly}
+Current step: "${step.title}". ${plainStepText(taking ? step.disassembly : step.assembly, analysis.parts)}
 Parts in this step: ${list}.
 `,
       },
