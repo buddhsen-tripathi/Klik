@@ -1,15 +1,28 @@
-/** Back / "Step n of m" / Next. */
-export default function Stepper({ stepIndex, count, writing, onStep }: { stepIndex: number; count: number; writing?: boolean; onStep: (i: number) => void }) {
+import type { ReactNode } from 'react'
+
+/** Bottom dock: helper buttons on the left, Back + a big Next in thumb reach. */
+export default function Stepper({
+  stepIndex,
+  count,
+  writing,
+  onStep,
+  extra,
+}: {
+  stepIndex: number
+  count: number
+  writing?: boolean
+  onStep: (i: number) => void
+  extra?: ReactNode
+}) {
+  const last = stepIndex >= count - 1
   return (
-    <div className="stepper">
-      <button className="btn ghost" onClick={() => onStep(stepIndex - 1)} disabled={stepIndex < 0}>
-        ← Back
+    <div className="dock">
+      {extra && <div className="dock-extra">{extra}</div>}
+      <button className="btn ghost dock-back" onClick={() => onStep(stepIndex - 1)} disabled={stepIndex < 0} aria-label="Back">
+        ←
       </button>
-      <span className="step-count">
-        {stepIndex < 0 ? (writing && count === 0 ? 'Writing steps…' : 'Overview') : `Step ${stepIndex + 1} of ${count}`}
-      </span>
-      <button className="btn primary" onClick={() => onStep(stepIndex + 1)} disabled={stepIndex >= count - 1 || count === 0}>
-        {stepIndex < 0 ? 'Start →' : 'Next →'}
+      <button className="btn primary dock-next" onClick={() => onStep(stepIndex + 1)} disabled={last || count === 0}>
+        {count === 0 ? (writing ? 'Writing steps…' : 'No steps') : stepIndex < 0 ? 'Start →' : last ? 'Done 🎉' : 'Next →'}
       </button>
     </div>
   )

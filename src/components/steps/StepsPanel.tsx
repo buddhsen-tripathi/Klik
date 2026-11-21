@@ -8,6 +8,7 @@ import Overview from './Overview'
 import SelectedPart from './SelectedPart'
 import StepCard from './StepCard'
 import StepList from './StepList'
+import StepProgress from './StepProgress'
 import Stepper from './Stepper'
 
 interface Props {
@@ -28,6 +29,10 @@ interface Props {
   assist?: ReactNode
   /** Hidden parts modelled from a reference photo, for credit. */
   references?: Map<string, NonNullable<ModelFile['reference']>>
+  /** Helper buttons for the bottom dock (voice, live coach). */
+  dockExtra?: ReactNode
+  /** Fix steps at the start of the list (after a progress check), marked in the progress bar. */
+  fixes?: number
 }
 
 const MODES: { value: Mode; label: string }[] = [
@@ -36,7 +41,7 @@ const MODES: { value: Mode; label: string }[] = [
 ]
 
 /** Right-hand (or bottom, on phones) panel: mode, stepper, the current step or overview, details. */
-export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, onStep, selectedId, modelError, writing, photo, timings = [], assist, references }: Props) {
+export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, onStep, selectedId, modelError, writing, photo, timings = [], assist, references, dockExtra, fixes = 0 }: Props) {
   const step = stepIndex >= 0 ? steps[stepIndex] : null
   const selected = selectedId ? analysis.parts.find((p) => p.id === selectedId) : null
 
@@ -45,8 +50,8 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
       <div className="panel-head">
         <h1>{analysis.objectName}</h1>
         <Segmented value={mode} options={MODES} onChange={onMode} />
+        <StepProgress stepIndex={stepIndex} count={steps.length} onStep={onStep} fixes={fixes} />
       </div>
-      <Stepper stepIndex={stepIndex} count={steps.length} writing={writing} onStep={onStep} />
       {assist}
       {step ? <StepCard step={step} mode={mode} analysis={analysis} /> : <Overview analysis={analysis} />}
       {selected && <SelectedPart part={selected} reference={references?.get(selected.id)} />}
@@ -57,6 +62,7 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
         <AiDetails analysis={analysis} photo={photo} timings={timings} />
       </Disclosure>
       {modelError && <p className="muted small">{modelError}</p>}
+      <Stepper stepIndex={stepIndex} count={steps.length} writing={writing} onStep={onStep} extra={dockExtra} />
     </aside>
   )
 }

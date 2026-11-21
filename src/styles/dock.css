@@ -1,0 +1,181 @@
+/* ---------- app-like scan screen: pinned 3D view, scrolling steps, bottom dock ---------- */
+
+:root {
+  --topbar-h: 57px;
+}
+
+/* One screen tall on every size: the 3D view never scrolls away; only the panel scrolls. */
+.workbench {
+  flex: 0 0 auto;
+  height: calc(100svh - var(--topbar-h) - env(safe-area-inset-top));
+  min-height: 0;
+  overflow: hidden;
+}
+.panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 0;
+}
+
+@media (max-width: 899px) {
+  :root {
+    --topbar-h: 49px;
+  }
+  .topbar {
+    padding-top: calc(env(safe-area-inset-top) + 8px);
+    padding-bottom: 8px;
+  }
+  .viewer {
+    flex: 0 0 42svh;
+    height: auto;
+    min-height: 220px;
+  }
+  .panel {
+    padding: 12px 16px 0;
+    gap: 10px;
+  }
+  .panel-head {
+    gap: 8px;
+  }
+  .panel-head h1 {
+    font-size: 1.05rem;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .step-card h2 {
+    font-size: 1.1rem;
+  }
+}
+
+/* Bottom dock: sticks to the bottom of the panel, in thumb reach. */
+.dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  margin: auto -16px 0;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+}
+.dock-extra {
+  display: flex;
+  gap: 8px;
+}
+.dock-back {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  font-size: 1.2rem;
+  flex: none;
+}
+.dock-next {
+  flex: 1;
+  height: 48px;
+  font-size: 1.05rem;
+}
+.btn.round {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1.25rem;
+  flex: none;
+}
+.live-pulse {
+  animation: live-pulse 1.8s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
+/* Step progress: label + segmented bar. */
+.step-progress {
+  display: grid;
+  gap: 6px;
+}
+.step-progress-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.step-progress-label .link-btn {
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-decoration: underline;
+  padding: 0;
+}
+.step-progress-bar {
+  display: flex;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.step-progress-bar li {
+  flex: 1;
+}
+.step-progress-bar button {
+  display: block;
+  width: 100%;
+  height: 6px;
+  /* Bigger tap target than the bar itself. */
+  padding: 8px 0;
+  background-clip: content-box;
+  border: 0;
+  border-radius: 99px;
+  background-color: var(--surface-2);
+  cursor: pointer;
+  box-sizing: content-box;
+  margin: -8px 0;
+}
+.step-progress-bar li.done button {
+  background-color: color-mix(in srgb, var(--accent) 55%, var(--surface-2));
+}
+.step-progress-bar li.current button {
+  background-color: var(--accent);
+}
+.step-progress-bar li.fix button {
+  outline: 1px dashed var(--danger);
+  outline-offset: -1px;
+}
+
+/* "Went wrong somewhere?" hint under the progress bar. */
+.assist-hint {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.size-check {
+  white-space: nowrap;
+  max-width: calc(100% - 24px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

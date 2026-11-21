@@ -8,7 +8,6 @@ export default function ProgressAssist(props: {
   recovery: Recovery | null
   stepIndex: number
   coach: boolean
-  onCoach: () => void
   onCheck: () => void
   onStart: () => void
   onClear: () => void
@@ -18,13 +17,8 @@ export default function ProgressAssist(props: {
   if (recovery) return <RecoveryBanner recovery={recovery} onClear={props.onClear} />
   if (props.coach) return null
   return (
-    <div className="assist-row">
-      <button className="btn ghost check-progress-btn" onClick={props.onCoach} title="The camera watches while you work: spoken instructions, warnings when something's off">
-        🎥 Live coach
-      </button>
-      <button className="link-btn" onClick={props.onCheck}>
-        or check a photo
-      </button>
-    </div>
+    <button className="assist-hint" onClick={props.onCheck}>
+      <span aria-hidden>🔍</span> Went wrong somewhere? <u>Check a photo</u> and I’ll re-plan from where you are.
+    </button>
   )
 }

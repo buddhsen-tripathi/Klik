@@ -11,11 +11,8 @@ export default function ViewerToolbar(props: {
   onFlip: () => void
   spin: boolean
   onSpin: () => void
-  canWatch: boolean
-  watching: boolean
-  onWatch: () => void
 }) {
-  const { scan, source, spin, watching } = props
+  const { scan, source, spin } = props
   const hasScan = scan.modelFiles.length > 0
   // Per-part meshes stream in while the scan is still modelling.
   const building = scan.stage === 'modeling'
@@ -51,18 +48,6 @@ export default function ViewerToolbar(props: {
           <span aria-hidden>↻</span>
           <span className="bar-label">{spin ? 'Stop spin' : 'Spin'}</span>
         </button>
-        {props.canWatch && (
-          <button
-            className={`btn small bar-btn ${watching ? 'primary' : 'ghost'}`}
-            aria-pressed={watching}
-            aria-label="Live coach"
-            title="Live coach: the camera watches, talks you through each step and warns you when something's off"
-            onClick={props.onWatch}
-          >
-            <span aria-hidden>🎥</span>
-            <span className="bar-label">{watching ? 'Live' : 'Live coach'}</span>
-          </button>
-        )}
       </div>
     </div>
   )

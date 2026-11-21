@@ -15,7 +15,7 @@ const STATUS: Record<Agent['status'], string> = {
  * Floating voice helper: tap the orb and talk ("next", "which screw is this?", "I think I
  * messed up the wheels"). Live captions show what it heard and what it says.
  */
-export default function VoiceAgent({ agent, coach = false, onEnd }: { agent: Agent; coach?: boolean; onEnd?: () => void }) {
+export default function VoiceAgent({ agent, coach = false, onEnd, launcher = true }: { agent: Agent; coach?: boolean; onEnd?: () => void; launcher?: boolean }) {
   const orb = useRef<HTMLButtonElement>(null)
   const [typed, setTyped] = useState('')
   const captions = useRef<HTMLDivElement>(null)
@@ -42,6 +42,7 @@ export default function VoiceAgent({ agent, coach = false, onEnd }: { agent: Age
   const open = agent.active || agent.status === 'error'
 
   if (!open) {
+    if (!launcher) return null
     return (
       <button className="agent-fab" onClick={() => void agent.start()} aria-label="Talk to the helper">
         <span className="agent-fab-icon" aria-hidden>

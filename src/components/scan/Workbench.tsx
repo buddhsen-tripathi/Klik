@@ -14,6 +14,7 @@ import PhotoWithBoxes from './PhotoWithBoxes'
 import ScanFailedChip from './ScanFailedChip'
 import SizeCheckChip from './SizeCheckChip'
 import ViewerToolbar from './ViewerToolbar'
+import AssistButtons from './AssistButtons'
 
 // Camera code only loads when someone turns on the live coach or checks a photo.
 const LiveCheck = lazy(() => import('../camera/LiveCheck'))
@@ -179,9 +180,6 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
           onFlip={() => setOrient((o) => (o + 1) % 4)}
           spin={spin}
           onSpin={() => setSpin((v) => !v)}
-          canWatch={canWatch}
-          watching={coach}
-          onWatch={() => (coach ? stopCoach() : startCoach())}
         />
         {coach && canWatch && (
           <Suspense fallback={null}>
@@ -217,13 +215,24 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
         photo={<PhotoWithBoxes scan={scan} compact />}
         timings={scan.timings}
         references={references}
+        fixes={recovery?.fixSteps.length ?? 0}
+        dockExtra={
+          canWatch && (
+            <AssistButtons
+              agent={agent}
+              coach={coach}
+              canCoach={canWatch}
+              onCoach={() => (coach ? stopCoach() : startCoach())}
+              onAsk={() => (agent.active ? endAgent() : void agent.start())}
+            />
+          )
+        }
         assist={
           canWatch && (
             <ProgressAssist
               recovery={recovery}
               stepIndex={stepIndex}
               coach={coach}
-              onCoach={startCoach}
               onCheck={() => setChecking({ note: '' })}
               onStart={() => setStepIndex(0)}
               onClear={clearPlan}
@@ -237,7 +246,7 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
           <ProgressCheckSheet scanId={scan.id} mode={mode} initialNote={checking.note} onDone={onRecovery} onClose={() => setChecking(null)} />
         </Suspense>
       )}
-      {canWatch && <VoiceAgent agent={agent} coach={coach} onEnd={endAgent} />}
+      {canWatch && <VoiceAgent agent={agent} coach={coach} onEnd={endAgent} launcher={false} />}
     </main>
   )
 }
