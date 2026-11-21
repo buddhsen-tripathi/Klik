@@ -8,10 +8,14 @@ import { triage } from './decisions'
 import { analyzePhotos, buildReference, identifyObject, writeGroupSteps, type ThinkingLevel } from './gemini'
 import { checkGroup, checkPlan, orderGroups, repairBrief, type GroupResult } from './review'
 import { toBase64 } from './util'
+import { getOrTranslate } from './translate'
+import { isLang } from '../shared/i18n'
 import { getFalResult, getFalStatus, layoutsOf, submitSam3d, type FalJob } from './fal'
 
 export interface ScanParams {
   scanId: string
+  /** App language when the scan was made: the guide is translated as soon as it's written. */
+  lang?: string
 }
 
 interface PhotoRow {
@@ -63,6 +67,7 @@ function planJobs(parts: Part[], maxJobs: number): string[][] {
 export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
   async run(event: Readonly<WorkflowEvent<ScanParams>>, step: WorkflowStep) {
     const { scanId } = event.payload
+    const lang = isLang(event.payload.lang) && event.payload.lang !== 'en' ? event.payload.lang : null
     const db = this.env.DB
 
     const setFields = (fields: Record<string, string | number | null>) => {
@@ -486,7 +491,17 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
       return merged
     })
 
-    if (!this.env.FAL_KEY) return
+    // The user's language, ready by the time they open the steps (runs alongside the 3D model).
+    const finalGuide = analysis
+    const translated = lang
+      ? step
+          .do(`translate-${lang}`, { retries: { limit: 1, delay: '3 seconds' }, timeout: '2 minutes' }, () =>
+            timed(`translate.${lang}`, async () => void (await getOrTranslate(this.env, scanId, finalGuide, lang)), () => lang),
+          )
+          .catch((err) => console.warn('translation failed; the app will ask again', err))
+      : null
+
+    if (!this.env.FAL_KEY) return void (await translated)
 
     // 6. SAM 3D: parallel jobs (usually one per part). Each finished mesh is copied to R2 straight
     //    away with its pose, so a failed or slow part doesn't hold the others back.
@@ -617,11 +632,13 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
         })
         await mark({ name: 'model ready', start: createdAt, end: Date.now(), note: `${files.length}/${jobs.length} parts` })
       })
+      await translated
       await sendTrace(true, 'done')
     } catch (err) {
       await step.do('mark-model-failed', async () => {
         await setFields({ stage: 'done', model_error: `3D model failed: ${String((err as Error)?.message ?? err)}` })
       })
+      await translated
       await sendTrace(false, '3D model failed')
     }
   }

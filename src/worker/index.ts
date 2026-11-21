@@ -8,6 +8,7 @@ import { identifyFrame } from './gemini'
 import assist from './routes/assist'
 import feedback from './routes/feedback'
 import shop from './routes/shop'
+import translate from './routes/translate'
 import { ALLOWED_TYPES, fileUrl, parseJson, toBase64 } from './util'
 import { orderedSteps } from '../shared/parts'
 
@@ -36,6 +37,7 @@ app.use('/api/*', async (c, next) => {
 app.route('/api', assist)
 app.route('/api', feedback)
 app.route('/api', shop)
+app.route('/api', translate)
 
 // Upload 1-6 photos of one object (different angles) and start the scan pipeline.
 // Form fields: photo (repeated), width (repeated), height (repeated), hint (optional).
@@ -45,6 +47,7 @@ app.post('/api/scans', async (c) => {
   const widths = form.getAll('width').map(Number)
   const heights = form.getAll('height').map(Number)
   const hint = String(form.get('hint') ?? '').trim().slice(0, 200) || null
+  const lang = String(form.get('lang') ?? 'en')
 
   if (photos.length === 0) return c.json({ error: 'at least one photo is required' }, 400)
   if (photos.length > MAX_PHOTOS) return c.json({ error: `at most ${MAX_PHOTOS} photos per scan` }, 400)
@@ -78,7 +81,7 @@ app.post('/api/scans', async (c) => {
       ),
     ),
   ])
-  await c.env.SCAN_WORKFLOW.create({ id, params: { scanId: id } })
+  await c.env.SCAN_WORKFLOW.create({ id, params: { scanId: id, lang } })
 
   return c.json({ id }, 201)
 })

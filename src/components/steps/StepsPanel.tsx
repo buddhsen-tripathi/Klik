@@ -12,6 +12,7 @@ import SheetTop from './SheetTop'
 import StepProgress from './StepProgress'
 import SwipeSteps from './SwipeSteps'
 import Stepper from './Stepper'
+import { useT } from '../../i18n/useT'
 
 interface Props {
   analysis: Analysis
@@ -37,15 +38,18 @@ interface Props {
   onFocusPart?: (id: string) => void
   /** Changes when a part is focused, so the phone sheet drops down to show the 3D view. */
   focusKey?: unknown
+  /** The guide is being translated into the app's language (English shows meanwhile). */
+  translating?: boolean
 }
 
-const MODES: { value: Mode; label: string }[] = [
-  { value: 'disassemble', label: 'Take apart' },
-  { value: 'assemble', label: 'Put together' },
-]
 
 /** Right-hand (or bottom, on phones) panel: mode, stepper, the current step or overview, details. */
-export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, onStep, selectedId, modelError, writing, photo, assist, references, dockExtra, fixes = 0, onFocusPart, focusKey }: Props) {
+export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, onStep, selectedId, modelError, writing, photo, assist, references, dockExtra, fixes = 0, onFocusPart, focusKey, translating }: Props) {
+  const t = useT()
+  const modes: { value: Mode; label: string }[] = [
+    { value: 'disassemble', label: t('takeApart') },
+    { value: 'assemble', label: t('putTogether') },
+  ]
   const step = stepIndex >= 0 ? steps[stepIndex] : null
   const selected = selectedId ? analysis.parts.find((p) => p.id === selectedId) : null
 
@@ -53,20 +57,21 @@ export default function StepsPanel({ analysis, steps, mode, stepIndex, onMode, o
     <aside className="panel">
       <div className="panel-head">
         <h1>{analysis.objectName}</h1>
-        <Segmented value={mode} options={MODES} onChange={onMode} />
+        <Segmented value={mode} options={modes} onChange={onMode} />
       </div>
       <SheetTop collapseKey={focusKey}>
         <StepProgress stepIndex={stepIndex} count={steps.length} onStep={onStep} fixes={fixes} />
+        {translating && <p className="muted small translating">{t('translating')}</p>}
       </SheetTop>
       {assist && <div className="panel-assist">{assist}</div>}
       <SwipeSteps stepIndex={stepIndex} count={steps.length} onStep={onStep}>
         {step ? <StepCard step={step} mode={mode} analysis={analysis} onFocusPart={onFocusPart} /> : <Overview analysis={analysis} />}
         {selected && <SelectedPart part={selected} objectName={analysis.objectName} reference={references?.get(selected.id)} />}
       </SwipeSteps>
-      <Disclosure summary="All steps">
+      <Disclosure summary={t('allSteps')}>
         <StepList steps={steps} stepIndex={stepIndex} onStep={onStep} />
       </Disclosure>
-      <Disclosure summary="What the AI saw">
+      <Disclosure summary={t('whatAiSaw')}>
         <AiDetails analysis={analysis} photo={photo} />
       </Disclosure>
       {modelError && <p className="muted small">{modelError}</p>}

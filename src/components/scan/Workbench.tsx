@@ -12,6 +12,7 @@ import Viewer3D, { type SizeCheck, type Source } from '../viewer/Viewer3D'
 import { markerIds } from '../../shared/parts'
 import ModelLoading from '../viewer/ModelLoading'
 import ShopSheet from '../shop/ShopSheet'
+import { useGuide } from '../../i18n/useGuide'
 import { closeShop } from '../shop/shopStore'
 import LiveStatus from './LiveStatus'
 import PhotoWithBoxes from './PhotoWithBoxes'
@@ -30,6 +31,9 @@ const saveData = () => Boolean((navigator as Navigator & { connection?: { saveDa
 
 /** The guide: 3D view + steps, the fix plan after a progress check, and the voice helper. */
 export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; analysis: Analysis; onScan: (s: ScanView) => void }) {
+  // Words in the user's language for the panel and the voice helper; the 3D view keeps the original
+  // analysis (same parts and geometry), so switching language never rebuilds the model.
+  const { guide, translating } = useGuide(scan.id, analysis, scan.stage !== 'analyzing')
   // Photographed loose parts / a kit → start in "Put together" (the user can switch).
   const [mode, setMode] = useState<Mode>(() => (analysis.triage?.state === 'loose_parts' ? 'assemble' : 'disassemble'))
   const [stepIndex, setStepIndex] = useState(-1)
@@ -48,7 +52,7 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
 
   // A progress check made in this mode turns the guide into: fixes first, then the rest from where they are.
   const recovery = scan.recovery?.mode === mode ? scan.recovery : null
-  const ordered = useMemo(() => orderedSteps(analysis, mode), [analysis, mode])
+  const ordered = useMemo(() => orderedSteps(guide, mode), [guide, mode])
   const steps = useMemo(() => (recovery ? planSteps(ordered, recovery) : ordered), [ordered, recovery])
   const states = useMemo(
     () => (recovery ? planStates(analysis, mode, ordered.slice(0, recovery.resumeAt), steps, stepIndex) : partStates(analysis, mode, stepIndex)),
@@ -91,7 +95,7 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
   }
 
   // ---- voice helper ----
-  const snapshot = (): AgentSnapshot => ({ scanId: scan.id, analysis, steps, stepIndex, mode, recovery, hasScan, coach })
+  const snapshot = (): AgentSnapshot => ({ scanId: scan.id, analysis: guide, steps, stepIndex, mode, recovery, hasScan, coach })
   const actions: AgentActions = {
     goToStep: setStepIndex,
     setMode: changeMode,
@@ -233,7 +237,8 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
       </section>
 
       <StepsPanel
-        analysis={analysis}
+        analysis={guide}
+        translating={translating}
         steps={steps}
         mode={mode}
         stepIndex={stepIndex}

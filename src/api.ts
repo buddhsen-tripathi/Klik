@@ -1,3 +1,5 @@
+import { getLang } from './i18n/lang'
+import type { GuideTranslation, Lang } from './shared/i18n'
 import type { Identification, Recovery, ScanSummary, ScanView, ShopProduct, Step } from './shared/types'
 
 /** A photo ready to upload. */
@@ -42,6 +44,7 @@ export async function createScan(shots: Shot[], hint: string): Promise<string> {
     form.append('height', String(s.height))
   })
   if (hint.trim()) form.set('hint', hint.trim())
+  form.set('lang', getLang())
   const { id } = await json<{ id: string }>(await fetch('/api/scans', { method: 'POST', body: form }))
   return id
 }
@@ -109,3 +112,7 @@ export interface ShopResult {
 /** Products from Shop (shop.dev) for a tool, a spare fastener or a replacement part. */
 export const searchShop = (query: string, signal?: AbortSignal) =>
   fetch(`/api/shop?q=${encodeURIComponent(query)}`, { signal }).then((r) => json<ShopResult>(r))
+
+/** The guide in another language (translated once per scan and language, then cached). */
+export const getTranslation = (scanId: string, lang: Lang, signal?: AbortSignal) =>
+  fetch(`/api/scans/${scanId}/translation?lang=${lang}`, { signal }).then((r) => json<GuideTranslation>(r))

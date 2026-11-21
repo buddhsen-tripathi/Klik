@@ -83,6 +83,8 @@ export interface Step {
   assembly: string
   tools: string[]
   caution: string | null
+  /** Manual-level detail for the action, per direction: where exactly, orientation, force or torque, and how to tell it's done. Same {part_id} tokens. Missing on older scans. */
+  details?: { disassembly: string[]; assembly: string[] } | null
   /** Subassembly this step belongs to, when the object was split between agents. */
   group?: string | null
   /** Rewritten after people ran into problems on it (live coach, "this step is wrong", photo checks). */

@@ -22,10 +22,21 @@ export const STEP_ITEM = {
       type: 'string',
       description: 'The reverse single action for the same parts, same {part_id} token style, with any alignment note. E.g. "Align {body} over {chassis} so the tabs meet, then lower it."',
     },
+    disassembly_details: {
+      type: 'array',
+      items: { type: 'string' },
+      description:
+        '1-4 short facts a good manual adds to this action, each under 20 words, same {part_id} tokens: exactly where (which side, which holes), how (direction, angle, how much force), what to watch for, and how to tell it is done (it clicks, it lifts freely, the screw is fully out).',
+    },
+    assembly_details: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Same for putting it back: orientation and alignment marks, order of tightening (e.g. crosswise), torque or "snug, do not overtighten", and how to tell it is seated.',
+    },
     tools: { type: 'array', items: { type: 'string' } },
     caution: { type: ['string', 'null'] },
   },
-  required: ['partIds', 'title', 'disassembly', 'assembly', 'tools', 'caution'],
+  required: ['partIds', 'title', 'disassembly', 'assembly', 'disassembly_details', 'assembly_details', 'tools', 'caution'],
 }
 
 // The planner (main agent). JSON Schema sent as generationConfig.responseJsonSchema.
@@ -626,6 +637,7 @@ Rules:
 - Only state exact sizes that appear in a part's [spec] or in the reference sheet. If a size is not known, describe it plainly and hedge the tool ("the 4 small Phillips screws, likely a #1 driver"); never invent thread sizes or lengths.
 - If the documents give an official order, follow it: an official ASSEMBLY order is reversed for disassembly.
 - "assembly" is the reverse action for the same parts, with any torque / alignment / orientation note from the documents.
+- The action line stays short; the detail goes in disassembly_details / assembly_details, at least as detailed as a good manual: use every relevant fact from the reference sheet (torque, orientation, tightening order, clip locations), and say how to tell the step is done.
 - Put power, sharp-edge and spring warnings in "caution".
 - handoff: other writers work on the other groups at the same time and can't see you. Leave a "needs_first" note with the part ids from OTHER groups that must be off before your first step, and a "note" for fasteners shared with another group or anything you leave in place.${opts.repair ? `
 
@@ -716,6 +728,7 @@ export function normalizeSteps(raw: unknown, ids: Set<string>): Step[] {
       assembly: str(s?.assembly),
       tools: strList(s?.tools),
       caution: typeof s?.caution === 'string' && s.caution.trim() ? s.caution : null,
+      details: { disassembly: strList(s?.disassembly_details).slice(0, 5), assembly: strList(s?.assembly_details).slice(0, 5) },
       group: typeof s?.group === 'string' ? s.group : null,
     }))
     .filter((s: Step) => s.partIds.length > 0)

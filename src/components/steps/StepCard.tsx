@@ -15,17 +15,23 @@ export default function StepCard({ step, mode, analysis, onFocusPart }: { step: 
   // Numbers match the pins on the 3D model (see Workbench / PartMarkers).
   const numbers = markerIds(text, step.partIds, (id) => analysis.parts.some((p) => p.id === id))
   const marker = (id: string) => <Marker n={numbers.indexOf(id) + 1} name={partName(id)} onClick={onFocusPart && (() => onFocusPart(id))} />
+  const withMarkers = (t: string) =>
+    splitTokens(t).map((x, i) => (typeof x === 'string' ? x : numbers.includes(x.id) ? <span key={i}>{marker(x.id)}</span> : partName(x.id)))
+  const details = (mode === 'disassemble' ? step.details?.disassembly : step.details?.assembly) ?? []
   const fasteners = analysis.parts.filter((p) => p.kind === 'fastener' && step.partIds.includes(p.id))
   return (
     <section className="card step-card">
       {step.group && <p className="eyebrow">{step.group}</p>}
       <h2>{step.title}</h2>
       <StepRevision revision={step.revision} />
-      <p className="instruction">
-        {splitTokens(text).map((t, i) =>
-          typeof t === 'string' ? t : numbers.includes(t.id) ? <span key={i}>{marker(t.id)}</span> : partName(t.id),
-        )}
-      </p>
+      <p className="instruction">{withMarkers(text)}</p>
+      {details.length > 0 && (
+        <ul className="step-details">
+          {details.map((d) => (
+            <li key={d}>{withMarkers(d)}</li>
+          ))}
+        </ul>
+      )}
       <ul className="marker-key" aria-label="Parts">
         {numbers.map((id) => (
           <li key={id}>

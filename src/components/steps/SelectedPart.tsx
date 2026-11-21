@@ -2,14 +2,16 @@ import { ShoppingBag } from 'lucide-react'
 import type { ModelFile, Part } from '../../shared/types'
 import { openShop } from '../shop/shopStore'
 import { qty } from './format'
+import { useT } from '../../i18n/useT'
 
 /** Details for the part tapped in the 3D view. */
 export default function SelectedPart({ part, objectName, reference }: { part: Part; objectName: string; reference?: ModelFile['reference'] }) {
+  const t = useT()
   // Screws: search by spec (any store). Other parts only make sense for this object.
   const shop =
     part.kind === 'fastener'
-      ? { label: 'Buy spares', title: `Spare ${part.spec ?? part.name}`, query: part.spec ? `${part.spec} ${part.name}` : part.name }
-      : { label: 'Find a replacement', title: `Replacement ${part.name.toLowerCase()}`, query: `${objectName} ${part.name}` }
+      ? { label: t('buySpares'), title: `Spare ${part.spec ?? part.name}`, query: part.spec ? `${part.spec} ${part.name}` : part.name }
+      : { label: t('findReplacement'), title: `Replacement ${part.name.toLowerCase()}`, query: `${objectName} ${part.name}` }
   return (
     <section className="card selected-part">
       <h3>

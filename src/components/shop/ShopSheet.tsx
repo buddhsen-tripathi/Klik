@@ -4,12 +4,14 @@ import { searchShop, type ShopResult } from '../../api'
 import { money } from './money'
 import { closeShop, useShopQuery } from './shopStore'
 import './shop.css'
+import { useT } from '../../i18n/useT'
 
 /** Shopify CDN images resize by query param; a small one is plenty for a row. */
 const thumb = (url: string) => (url.includes('cdn.shopify.com') ? `${url}${url.includes('?') ? '&' : '?'}width=160` : url)
 
 /** Products from Shop for a tool or a replacement part. Opened with openShop(). */
 export default function ShopSheet() {
+  const t = useT()
   const q = useShopQuery()
   const [state, setState] = useState<{ key: string; result?: ShopResult; error?: string } | null>(null)
 
@@ -30,14 +32,14 @@ export default function ShopSheet() {
         <h2 className="icon-text">
           <ShoppingBag aria-hidden /> {q.title}
         </h2>
-        {!ready && <p className="muted">Searching…</p>}
-        {ready?.error && <p className="error">Couldn't load products.</p>}
+        {!ready && <p className="muted">{t('searching')}</p>}
+        {ready?.error && <p className="error">{t('loadFailed')}</p>}
         {ready?.result?.warnings.map((w) => (
           <p key={w} className="shop-warning">
             {w}
           </p>
         ))}
-        {ready?.result && ready.result.products.length === 0 && <p className="muted">No matches.</p>}
+        {ready?.result && ready.result.products.length === 0 && <p className="muted">{t('noMatches')}</p>}
         <ul className="shop-list">
           {ready?.result?.products.map((p) => (
             <li key={p.url}>
@@ -57,9 +59,9 @@ export default function ShopSheet() {
             </li>
           ))}
         </ul>
-        <p className="muted small">From Shop</p>
+        <p className="muted small">{t('fromShop')}</p>
         <button className="btn ghost" onClick={closeShop}>
-          Close
+          {t('close')}
         </button>
       </div>
     </div>

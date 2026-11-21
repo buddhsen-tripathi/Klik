@@ -5,6 +5,8 @@ import type { FunctionDeclaration } from './liveSession'
 import { markerIds, partLabel, plainStepText } from '../../shared/parts'
 import { money } from '../shop/money'
 import { openShop } from '../shop/shopStore'
+import { getLang } from '../../i18n/lang'
+import { LANGUAGES } from '../../shared/i18n'
 
 /** What the agent can see of the app right now. */
 export interface AgentSnapshot {
@@ -132,7 +134,9 @@ function stepText(s: AgentSnapshot, i: number): string {
   // Parts show as numbered markers on screen: "the body (1)" lets the agent say "part 1".
   const text = s.mode === 'disassemble' ? step.disassembly : step.assembly
   const numbers = markerIds(text, step.partIds, (id) => s.analysis.parts.some((p) => p.id === id))
-  return `Step ${i + 1} of ${s.steps.length}${fix}: ${step.title}. ${plainStepText(text, s.analysis.parts, numbers)}${
+  const details = (s.mode === 'disassemble' ? step.details?.disassembly : step.details?.assembly) ?? []
+  const more = details.length ? ` Details: ${details.map((d) => plainStepText(d, s.analysis.parts, numbers)).join(' ')}` : ''
+  return `Step ${i + 1} of ${s.steps.length}${fix}: ${step.title}. ${plainStepText(text, s.analysis.parts, numbers)}${more}${
     names.length ? ` Parts: ${names.map(partLine).join(', ')}.` : ''
   }${step.tools.length ? ` Tools: ${step.tools.join(', ')}.` : ''}${step.caution ? ` Caution: ${step.caution}` : ''}`
 }
@@ -147,8 +151,11 @@ export function describeState(s: AgentSnapshot): string {
 export function buildInstructions(s: AgentSnapshot): string {
   const a = s.analysis
   const ref = a.reference
+  const language = LANGUAGES.find((l) => l.code === getLang())!.english
   return `You are the voice helper inside "Assemble on the Go", an app that guides people through taking apart and putting together real objects. The user's hands are busy, so you drive the app with tools.
-
+${language === 'English' ? '' : `
+LANGUAGE: The app is set to ${language}. Always speak ${language} (the guide text you get is already in ${language}). If the user clearly switches to another language, follow them.
+`}
 How to talk:
 - Short and natural: one or two sentences, like a friend at the workbench. No lists, no markdown.
 - Number steps from 1. Name the exact screw or part and the tool.
