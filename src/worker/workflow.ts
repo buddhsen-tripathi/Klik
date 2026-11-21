@@ -192,7 +192,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
           end: Math.max(...timings.map((t) => t.end), Date.now()),
           timings,
           model: this.env.GEMINI_MODEL,
-          attributes: { 'scan.result': note },
+          attributes: { 'scan.result': note, 'scan.steps_model': this.env.STEPS_MODEL || this.env.GEMINI_MODEL },
           ok,
         })
       })
@@ -275,7 +275,8 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
               async () =>
                 buildReference({
                   apiKey: this.env.GEMINI_API_KEY,
-                  model: this.env.STEPS_MODEL || this.env.GEMINI_MODEL,
+                  // On the critical path before planning: the fast model.
+                  model: this.env.GEMINI_MODEL,
                   thinkingLevel: thinking,
                   identity,
                   image: { base64: await readPhoto(first), mimeType: first.photo_type },

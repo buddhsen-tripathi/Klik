@@ -52,10 +52,10 @@ export async function exportSpans(apiKey: string, traceId: string, spans: SpanDa
   const body = {
     resourceSpans: [
       {
-        resource: { attributes: attrs({ 'service.name': 'assemble-on-the-go', 'deployment.environment': 'production' }) },
+        resource: { attributes: attrs({ 'service.name': 'klik', 'deployment.environment': 'production' }) },
         scopeSpans: [
           {
-            scope: { name: 'assemble-on-the-go' },
+            scope: { name: 'klik' },
             spans: spans.map((s) => ({
               traceId,
               spanId: s.spanId,
@@ -107,7 +107,7 @@ export async function exportTrace(run: TraceRun): Promise<void> {
       start: run.start,
       end: run.end,
       ok: run.ok,
-      attributes: { 'session.id': run.scanId, 'gen_ai.operation.name': 'invoke_agent', 'gen_ai.agent.name': 'assemble-on-the-go', ...run.attributes },
+      attributes: { 'session.id': run.scanId, 'gen_ai.operation.name': 'invoke_agent', 'gen_ai.agent.name': 'klik', ...run.attributes },
     },
     ...run.timings
       .filter((t) => t.end >= t.start && t.name !== run.name)

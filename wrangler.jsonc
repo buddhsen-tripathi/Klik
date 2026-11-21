@@ -35,13 +35,13 @@
   ],
 
   "vars": {
-    // Planner. Hydrogen gets steps on screen in ~33 s vs ~50 s on gemini-4-neon with the same parts and
-    // fasteners in tests; switch back to neon if plans for complex objects look thin.
+    // Two Gemini 4 models: hydrogen where speed matters, neon where instruction quality matters.
+    // Planner (parts + 3D boxes, on the critical path to the first 3D job): hydrogen.
     "GEMINI_MODEL": "gemini-4-hydrogen",
     // MINIMAL | LOW | MEDIUM | HIGH. LOW keeps analysis fast; raise it if parts/steps look sloppy.
     "ANALYSIS_THINKING": "LOW",
-    // Model for the per-subassembly step-writer agents (run in parallel).
-    "STEPS_MODEL": "gemini-4-hydrogen",
+    // Step writers (one per subassembly, in parallel), fix plans and step rewrites: neon, for manual-level detail.
+    "STEPS_MODEL": "gemini-4-neon",
     // Parallel SAM 3D jobs per scan (one per part, $0.02 each). SAM 3D takes ~25 s per box, so one job per part is fastest.
     "MAX_3D_JOBS": "10",
     // Fast, cheap model for naming what's in the live camera view (called every few seconds).
