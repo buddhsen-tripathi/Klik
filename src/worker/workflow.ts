@@ -275,8 +275,8 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
               async () =>
                 buildReference({
                   apiKey: this.env.GEMINI_API_KEY,
-                  // On the critical path before planning: the fast model.
-                  model: this.env.GEMINI_MODEL,
+                  // On the critical path before planning: the fast model (the planner itself is neon).
+                  model: this.env.IDENTIFY_MODEL || this.env.GEMINI_MODEL,
                   thinkingLevel: thinking,
                   identity,
                   image: { base64: await readPhoto(first), mimeType: first.photo_type },
@@ -519,7 +519,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<Env, ScanParams> {
                 findReferenceImage({
                   geminiKey: this.env.GEMINI_API_KEY,
                   clonvoKey: this.env.CLONVO_API_KEY,
-                  model: this.env.GEMINI_MODEL,
+                  model: this.env.IDENTIFY_MODEL || this.env.GEMINI_MODEL,
                   analysis: a,
                   part,
                   onTiming: markTool,
