@@ -4,6 +4,7 @@ import { webAnswer } from '../clonvo'
 import type { ThinkingLevel } from '../gemini'
 import { exportSpans, newSpanId } from '../otel'
 import { checkProgress } from '../recovery'
+import { maybeReviseStep, recordFeedback } from '../stepFeedback'
 import { ALLOWED_TYPES, fileUrl, parseJson, toBase64 } from '../util'
 
 const MAX_CHECK_BYTES = 4 * 1024 * 1024
@@ -85,6 +86,16 @@ assist.post('/scans/:id/progress', async (c) => {
   ])
   const recovery: Recovery = { ...result, createdAt: Date.now(), photoUrl: fileUrl(key) }
   await c.env.DB.prepare('UPDATE scans SET recovery = ? WHERE id = ?').bind(JSON.stringify(recovery), id).run()
+  // Learning from use: each mistake counts against its guide step; enough of them and the step is rewritten.
+  const n = analysis.steps.length
+  const flagged = recovery.mistakes.filter((m) => m.stepIndex != null).map((m) => ({ index: mode === 'disassemble' ? m.stepIndex! : n - 1 - m.stepIndex!, problem: `${m.problem}${m.fix ? ` (fix: ${m.fix})` : ''}` }))
+  if (flagged.length)
+    c.executionCtx.waitUntil(
+      (async () => {
+        for (const f of flagged) await recordFeedback(c.env.DB, { scanId: id, stepIndex: f.index, kind: 'photo_check', problem: f.problem, source: 'progress check' })
+        for (const index of new Set(flagged.map((f) => f.index))) await maybeReviseStep(c.env, id, index).catch(() => null)
+      })(),
+    )
   return c.json(recovery)
 })
 

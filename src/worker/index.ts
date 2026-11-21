@@ -5,6 +5,7 @@ import type { Analysis, ModelFile, Recovery, ScanPhoto, ScanSummary, ScanView, T
 import { checkStep } from './decisions'
 import { identifyFrame } from './gemini'
 import assist from './routes/assist'
+import feedback from './routes/feedback'
 import { ALLOWED_TYPES, fileUrl, parseJson, toBase64 } from './util'
 
 export { ScanWorkflow } from './workflow'
@@ -29,6 +30,7 @@ app.use('/api/*', async (c, next) => {
   c.executionCtx.waitUntil(exportRequestTrace(c.env.CLONVO_API_KEY, trace, c.res.status))
 })
 app.route('/api', assist)
+app.route('/api', feedback)
 
 // Upload 1-6 photos of one object (different angles) and start the scan pipeline.
 // Form fields: photo (repeated), width (repeated), height (repeated), hint (optional).

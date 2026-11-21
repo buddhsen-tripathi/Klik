@@ -1,4 +1,4 @@
-import { agentSearch } from '../../api'
+import { agentSearch, reportStepProblem } from '../../api'
 import type { Mode } from '../../explode'
 import type { Analysis, Part, Recovery, Step } from '../../shared/types'
 import type { FunctionDeclaration } from './liveSession'
@@ -32,6 +32,8 @@ export interface AgentActions {
   startPlan(): void
   clearPlan(): void
   newScan(): void
+  /** A guide step (index into analysis.steps) was rewritten from feedback: show the new one. */
+  reviseStep(index: number, step: Step): void
   end(): void
 }
 
@@ -80,6 +82,21 @@ export const TOOLS: FunctionDeclaration[] = [
     description: 'Look something up online (manuals, screw sizes, where to buy a spare part, how a mechanism works) when the guide does not say.',
     parameters: { type: 'OBJECT', properties: { question: str('A full, specific question including the product name') }, required: ['question'] },
   },
+  {
+    name: 'report_step_problem',
+    description:
+      'Save a problem with a guide step so the step gets rewritten for everyone. Call it when (a) the user says a step is wrong, missing something or confusing (user_says_wrong true), or (b) you just warned them about a mistake on a step (live coach). Not for ordinary questions. The rewritten step may come back later; then read them the new instruction.',
+    behavior: 'NON_BLOCKING',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        step: { type: 'INTEGER', description: 'Number (1-based) of the step the problem is ABOUT: find it in STEPS by the part or action they mention, which may not be the step on screen. Omit only if it is the current step.' },
+        problem: str('What went wrong or what is unclear, concretely (which part, which screw, what they did).'),
+        user_says_wrong: { type: 'BOOLEAN', description: 'true if the user themselves said the instructions are wrong or unclear.' },
+      },
+      required: ['problem'],
+    },
+  },
   { name: 'new_scan', description: 'Start scanning a different object (leaves this guide).' },
   {
     name: 'stay_quiet',
@@ -122,6 +139,7 @@ How to talk:
 - Safety first: mention cautions on the step.
 - Only state sizes that are in the guide; otherwise say you're not sure or use search_web.
 - Messages starting with [App] are app events, not the user speaking.
+- If the user says a step is wrong, confusing or missing something, call report_step_problem (user_says_wrong true), tell them you're fixing it, and when the new step comes back read it to them in a sentence.
 
 LIVE COACH (when the camera is on you get video frames of their hands and the object):
 - Watch what they actually do and coach in real time, like an expert standing next to them.
@@ -130,6 +148,7 @@ LIVE COACH (when the camera is on you get video frames of their hands and the ob
 - "[App] Coach check" messages are periodic: if nothing needs saying, call stay_quiet and say nothing. Never say "looks good" just to fill silence.
 - Only describe what is in the frames you actually received. If you have no frames yet, or the object is out of frame or blurry, say you can't see it yet and ask them to point the camera at it. Never guess what they are holding.
 - If they made a mistake that needs re-planning, call check_progress with what you saw as the note.
+- After you warn about a mistake, also call report_step_problem with what went wrong, so the step gets clearer for the next person.
 
 THE OBJECT: ${a.objectName}. ${a.summary}
 Size: ${a.dimensions.join(' x ')} cm (${a.dimensionsSource === 'docs' ? 'from the manufacturer' : 'estimated'}). Difficulty: ${a.difficulty}, about ${a.estimatedMinutes} min.
@@ -227,6 +246,37 @@ export async function runTool(name: string, args: Record<string, unknown>, s: Ag
     case 'search_web': {
       const r = await agentSearch(String(args.question ?? ''))
       return { answer: r.answer.slice(0, 1500), sources: r.sources.map((x) => x.title) }
+    }
+    case 'report_step_problem': {
+      const i = args.step != null ? Number(args.step) - 1 : s.stepIndex
+      const step = s.steps[i]
+      const problem = String(args.problem ?? '').trim()
+      if (!step || !problem) return { ok: false, error: 'Say which step and what the problem is.', scheduling: 'WHEN_IDLE' }
+      // Fix steps from a progress check aren't part of the saved guide.
+      const index = s.analysis.steps.findIndex((g) => g === step || (g.title === step.title && g.partIds.join() === step.partIds.join()))
+      if (index < 0) return { ok: true, note: 'That is a temporary fix step; nothing to save.', scheduling: 'SILENT' }
+      const r = await reportStepProblem(s.scanId, index, args.user_says_wrong ? 'user_says_wrong' : 'coach_warning', problem)
+      if (r.mismatch)
+        return {
+          ok: false,
+          error: `That problem doesn't match step ${i + 1} ("${step.title}"), so nothing changed.`,
+          next: 'Call report_step_problem again with the number of the step it is about, or ask them which step they mean.',
+          scheduling: 'WHEN_IDLE',
+        }
+      if (!r.revised)
+        return args.user_says_wrong
+          ? { ok: false, note: 'Saved, but the step could not be rewritten right now.', next: 'Tell them it is noted.', scheduling: 'WHEN_IDLE' }
+          : { ok: true, saved: true, scheduling: 'SILENT' }
+      act.reviseStep(index, r.revised)
+      return {
+        ok: true,
+        revised: true,
+        step: i + 1,
+        newInstruction: s.mode === 'disassemble' ? r.revised.disassembly : r.revised.assembly,
+        caution: r.revised.caution,
+        next: 'Tell them in a few words that this step is updated, then read the new instruction.',
+        scheduling: 'WHEN_IDLE',
+      }
     }
     case 'new_scan':
       act.newScan()

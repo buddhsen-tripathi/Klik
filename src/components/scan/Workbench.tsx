@@ -91,6 +91,7 @@ export default function Workbench({ scan, analysis, onScan }: { scan: ScanView; 
     startPlan: () => setStepIndex(0),
     clearPlan,
     newScan: () => (location.hash = '#/'),
+    reviseStep: (index, step) => onScan({ ...scan, analysis: { ...analysis, steps: analysis.steps.map((s, k) => (k === index ? step : s)) } }),
     end: () => endAgent(),
   }
   const agent = useVoiceAgent(snapshot, actions)

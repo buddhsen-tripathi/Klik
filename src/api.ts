@@ -1,4 +1,4 @@
-import type { Identification, Recovery, ScanSummary, ScanView } from './shared/types'
+import type { Identification, Recovery, ScanSummary, ScanView, Step } from './shared/types'
 
 /** A photo ready to upload. */
 export interface Shot {
@@ -89,6 +89,12 @@ export const clearRecovery = (scanId: string) => fetch(`/api/scans/${scanId}/rec
 
 /** Short-lived Gemini Live token for the voice agent. */
 export const liveToken = () => fetch('/api/live/token', { method: 'POST' }).then((r) => json<{ token: string; model: string }>(r))
+
+/** A problem with a guide step (index into analysis.steps). Returns the rewritten step if this report triggered one. */
+export const reportStepProblem = (scanId: string, index: number, kind: 'user_says_wrong' | 'coach_warning', problem: string) =>
+  fetch(`/api/scans/${scanId}/steps/${index}/feedback`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, problem }) }).then((r) =>
+    json<{ recorded: boolean; revised: Step | null; reasons: string[]; mismatch: boolean }>(r),
+  )
 
 /** Voice agent's web search (cited answer). */
 export const agentSearch = (question: string) =>

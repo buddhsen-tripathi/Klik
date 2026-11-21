@@ -85,6 +85,8 @@ export interface Step {
   caution: string | null
   /** Subassembly this step belongs to, when the object was split between agents. */
   group?: string | null
+  /** Rewritten after people ran into problems on it (live coach, "this step is wrong", photo checks). */
+  revision?: { at: number; reasons: string[]; count: number } | null
 }
 
 /** Note a step writer leaves for the others and the reviewer. */

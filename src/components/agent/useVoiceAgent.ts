@@ -46,6 +46,7 @@ const TOOL_LABEL: Record<string, string> = {
   fix_plan: 'Fix plan',
   search_web: 'Searching the web…',
   new_scan: 'New scan',
+  report_step_problem: 'Saving that for this step',
 }
 
 /**

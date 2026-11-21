@@ -3,6 +3,7 @@ import type { Mode } from '../../explode'
 import type { Analysis, Step } from '../../shared/types'
 import { Chip, ChipRow } from '../ui/Chip'
 import { qty } from './format'
+import StepRevision from './StepRevision'
 
 /** The current step: what to do, which parts, which screws and tools. */
 export default function StepCard({ step, mode, analysis }: { step: Step; mode: Mode; analysis: Analysis }) {
@@ -12,6 +13,7 @@ export default function StepCard({ step, mode, analysis }: { step: Step; mode: M
     <section className="card step-card">
       {step.group && <p className="eyebrow">{step.group}</p>}
       <h2>{step.title}</h2>
+      <StepRevision revision={step.revision} />
       <p className="instruction">{mode === 'disassemble' ? step.disassembly : step.assembly}</p>
       <p className="parts-line">
         <strong>Parts:</strong> {step.partIds.map(partName).join(', ')}

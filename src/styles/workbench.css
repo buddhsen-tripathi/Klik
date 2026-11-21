@@ -255,3 +255,17 @@ details.card summary {
   color: var(--muted);
   font-size: 0.9rem;
 }
+
+.step-revision {
+  margin: -4px 0 8px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.step-revision summary {
+  cursor: pointer;
+  color: color-mix(in srgb, var(--accent) 70%, var(--text));
+  font-weight: 600;
+}
+.step-revision ul {
+  margin: 6px 0 0;
+}
